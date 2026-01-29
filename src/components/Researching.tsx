@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '@/lib/state-machine';
 import styles from './Researching.module.css';
 
@@ -33,22 +33,25 @@ const DocIcon = () => (
 export function Researching() {
     const { location, formData, researchStatus, researchProgress, setResearchProgress, setResearchResults, transition, formSchema } = useAppStore();
     const [elapsedTime, setElapsedTime] = useState(0);
-    const [started, setStarted] = useState(false);
+    const requestStarted = useRef(false);
+    const [logs, setLogs] = useState<string[]>([]);
 
     // Call research API
     useEffect(() => {
-        if (started || !formSchema || !formData) return;
-        setStarted(true);
+        if (requestStarted.current || !formSchema || !formData) return;
+        requestStarted.current = true;
+
+        let isCancelled = false; // Local flag for THIS effect instance
 
         const timer = setInterval(() => {
             setElapsedTime(prev => prev + 1);
         }, 1000);
 
-        const abortController = new AbortController();
-
         async function startResearch() {
             try {
+                console.log('[CLIENT] Starting research...');
                 setResearchProgress(5, 'Initializing research agent...');
+                console.log('[CLIENT] Making fetch request to /api/research');
 
                 const response = await fetch('/api/research', {
                     method: 'POST',
@@ -58,43 +61,70 @@ export function Researching() {
                         formData: formData,
                         location: location
                     }),
-                    signal: abortController.signal,
                 });
 
+                console.log('[CLIENT] Response received', response.status, response.ok);
                 if (!response.ok) throw new Error('Research request failed');
                 if (!response.body) throw new Error('No response body');
+                console.log('[CLIENT] Starting to read stream...');
 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let buffer = '';
                 let finalJson = '';
 
+                let chunkCount = 0;
                 while (true) {
                     const { done, value } = await reader.read();
-                    if (done) break;
+                    if (done) {
+                        console.log('[CLIENT] Stream done, chunks received:', chunkCount);
+                        break;
+                    }
+                    chunkCount++;
+                    console.log(`[CLIENT] Chunk ${chunkCount} received, size:`, value.length);
 
                     const chunk = decoder.decode(value, { stream: true });
-                    // Provide visual feedback based on stream activity
-                    setResearchProgress(Math.min(90, useAppStore.getState().researchProgress + (chunk.length > 50 ? 5 : 1)), 'Extracting insights...');
 
                     const lines = chunk.split('\n');
                     for (const line of lines) {
                         if (line.startsWith('0:')) {
-                            // Extract text content from AI stream format
+                            const rawContent = line.substring(2);
+                            // Cleanup JSON string
+                            let content = '';
                             try {
-                                const content = JSON.parse(line.substring(2));
-                                finalJson += content;
+                                content = JSON.parse(rawContent);
                             } catch (e) {
-                                finalJson += line.substring(2);
+                                content = rawContent;
+                            }
+
+                            // Check for System messages
+                            if (content.startsWith && content.startsWith('\n[System:')) {
+                                const message = content.replace(/\n\[System: |\]$/g, '').replace(/\.{3}$/, '');
+                                setLogs(prev => [...prev, `> ${message}`]);
+
+                                // Update progress based on message content
+                                if (message.includes('Using tool webSearch') || message.includes('web-search')) {
+                                    setResearchProgress(Math.min(useAppStore.getState().researchProgress + 8, 60), 'Searching the web...');
+                                } else if (message.includes('dataSynthesis') || message.includes('data-synthesis')) {
+                                    setResearchProgress(Math.min(useAppStore.getState().researchProgress + 10, 85), 'Synthesizing data...');
+                                } else if (message.includes('completed')) {
+                                    setResearchProgress(Math.min(useAppStore.getState().researchProgress + 5, 90), 'Processing results...');
+                                } else if (message.includes('Step completed')) {
+                                    setResearchProgress(Math.min(useAppStore.getState().researchProgress + 3, 88), 'Analyzing...');
+                                } else {
+                                    // Generic progress update for other system messages
+                                    setResearchProgress(Math.min(useAppStore.getState().researchProgress + 2, 80), message.substring(0, 50));
+                                }
+                            }
+                            // Check for Errors
+                            else if (content.startsWith && content.startsWith('\n[System Error:')) {
+                                setLogs(prev => [...prev, `❌ ${content}`]);
+                            }
+                            // Append text content (this is the actual response JSON)
+                            else if (typeof content === 'string' && content.trim()) {
+                                finalJson += content;
                             }
                         }
-                    }
-
-                    // Update status based on keywords
-                    if (finalJson.includes('web-search')) {
-                        setResearchProgress(Math.min(60, Math.max(useAppStore.getState().researchProgress, 30)), 'Searching the web...');
-                    } else if (finalJson.includes('data-synthesis')) {
-                        setResearchProgress(Math.min(80, Math.max(useAppStore.getState().researchProgress, 60)), 'Synthesizing data...');
                     }
                 }
 
@@ -149,8 +179,11 @@ export function Researching() {
                 }
 
             } catch (error) {
-                if (abortController.signal.aborted) return;
-                console.error('Research error:', error);
+                if (isCancelled) {
+                    console.log('[CLIENT] Request cancelled');
+                    return;
+                }
+                console.error('[CLIENT ERROR]', error);
                 setResearchProgress(0, 'Research failed. Please try again.');
             }
         }
@@ -158,7 +191,8 @@ export function Researching() {
         startResearch();
 
         return () => {
-            abortController.abort();
+            console.log('[CLIENT] Cleanup - setting cancelled flag');
+            isCancelled = true;
             clearInterval(timer);
         };
     }, []);
@@ -193,6 +227,17 @@ export function Researching() {
                     <div className={styles.metaInfo}>
                         <span>{Math.round(researchProgress)}% Complete</span>
                         <span>{formatTime(elapsedTime)}</span>
+                    </div>
+
+                    {/* Activity Log */}
+                    <div className={styles.logsContainer}>
+                        <div className={styles.logsHeader}>Activity Log</div>
+                        <div className={styles.logsContent}>
+                            {logs.length === 0 && <span className={styles.logPlaceholder}>Waiting for agent activity...</span>}
+                            {logs.map((log, i) => (
+                                <div key={i} className={styles.logEntry}>{log}</div>
+                            ))}
+                        </div>
                     </div>
                 </div>
 
