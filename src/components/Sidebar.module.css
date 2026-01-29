@@ -19,6 +19,7 @@
     top: 0;
     left: 0;
     height: 100vh;
+    height: 100dvh; /* Dynamic viewport height for mobile */
     width: 280px;
     background: var(--bg-secondary);
     border-right: 1px solid var(--glass-border);
@@ -37,6 +38,7 @@
 @media (min-width: 768px) {
     .sidebar {
         position: relative;
+        height: 100%; /* Fill parent height instead of viewport */
         transform: translateX(0);
         flex-shrink: 0;
     }
@@ -122,6 +124,7 @@
     flex: 1;
     overflow-y: auto;
     padding: var(--space-2);
+    min-height: 0; /* Critical for flex overflow to work */
 }
 
 .dateGroup {
@@ -262,11 +265,15 @@
 .sidebarFooter {
     padding: var(--space-3) var(--space-4);
     border-top: 1px solid var(--glass-border);
+    background: var(--bg-secondary);
+    flex-shrink: 0; /* Prevent footer from shrinking */
 }
 
 .footerText {
     font-size: 11px;
     color: var(--text-muted);
+    display: block;
+    text-align: center;
 }
 
 /* Scrollbar styling */

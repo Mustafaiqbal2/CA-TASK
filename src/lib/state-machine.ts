@@ -217,7 +217,7 @@ const initialState = {
     researchProgress: 0,
     researchStatus: '',
     location: null as LocationContext | null,
-    isSidebarOpen: false,
+    isSidebarOpen: true, // Open by default
 };
 
 // ============================================
@@ -324,22 +324,20 @@ export const useAppStore = create<AppStoreState>()(
             },
 
             /**
-             * Reset the entire state machine to initial state
+             * Reset the state machine and start a new session
+             * Preserves all existing sessions in history
              */
             reset: (): void => {
-                console.log('[StateMachine] Resetting to initial state');
-                set({
-                    ...initialState,
-                    transitionLogs: [
-                        ...get().transitionLogs,
-                        {
-                            from: get().currentState,
-                            to: 'INTERVIEWING',
-                            timestamp: new Date(),
-                            trigger: 'reset',
-                        },
-                    ],
-                });
+                console.log('[StateMachine] Starting new research session');
+                const state = get();
+                
+                // Save current session first if it has content
+                if (state.currentSessionId && (state.chatMessages.length > 0 || state.researchResults)) {
+                    get().saveCurrentSession();
+                }
+                
+                // Create a new session (this preserves existing sessions)
+                get().createNewSession();
             },
 
             /**
@@ -568,6 +566,7 @@ export const useAppStore = create<AppStoreState>()(
                 formData: state.formData,
                 researchResults: state.researchResults,
                 location: state.location,
+                isSidebarOpen: state.isSidebarOpen,
             }),
         }
     )

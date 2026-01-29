@@ -2,7 +2,9 @@
 .appLayout {
     display: flex;
     min-height: 100vh;
+    height: 100vh; /* Fixed height for proper sidebar */
     background: var(--bg-primary);
+    overflow: hidden; /* Prevent double scrollbars */
 }
 
 /* Main container */
@@ -159,11 +161,10 @@
     -webkit-text-fill-color: transparent;
 }
 
-.headerSpacer {
-    width: 60px;
-    /* Balance left side */
+.headerActions {
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
+    gap: var(--space-3);
 }
 
 .viewFormButton {
@@ -208,15 +209,23 @@
     gap: var(--space-4);
 }
 
-/* Scroll Controls */
+/* Scroll Controls - Fixed floating at bottom right */
 .scrollControls {
-    position: absolute;
+    position: fixed;
     right: 24px;
-    bottom: 16px;
+    bottom: 100px; /* Above the input area */
     display: flex;
     flex-direction: column;
     gap: 8px;
     z-index: 100;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+    .scrollControls {
+        right: 16px;
+        bottom: 120px; /* Higher on mobile to avoid input overlap */
+    }
 }
 
 .scrollButton {

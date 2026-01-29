@@ -152,13 +152,13 @@ export default function HomePage() {
                 <div className={styles.gradientOrb2} />
                 <div className={styles.gradientOrb3} />
                 <div className={styles.gridOverlay} />
-                {/* Floating particles */}
+                {/* Floating particles - using deterministic positions to avoid hydration mismatch */}
                 <div className={styles.particles}>
                     {[...Array(20)].map((_, i) => (
                         <div key={i} className={styles.particle} style={{
                             '--delay': `${i * 0.5}s`,
-                            '--x': `${Math.random() * 100}%`,
-                            '--duration': `${15 + Math.random() * 20}s`,
+                            '--x': `${(i * 5 + 2.5) % 100}%`,
+                            '--duration': `${15 + (i * 1.7) % 20}s`,
                         } as React.CSSProperties} />
                     ))}
                 </div>

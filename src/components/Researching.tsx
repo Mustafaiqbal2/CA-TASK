@@ -37,20 +37,29 @@ const SparkleIcon = () => (
     </svg>
 );
 
+// Stable particle positions - computed once based on index to avoid re-render flicker
+const PARTICLE_CONFIGS = Array.from({ length: 20 }, (_, i) => ({
+    delay: ((i * 7) % 5),
+    duration: 10 + ((i * 3) % 10),
+    xStart: ((i * 17) % 100),
+    xEnd: ((i * 23 + 50) % 100),
+    size: 2 + ((i * 11) % 4),
+}));
+
 // Floating particles for background effect
 const FloatingParticles = () => {
     return (
         <div className={styles.particles}>
-            {[...Array(20)].map((_, i) => (
+            {PARTICLE_CONFIGS.map((config, i) => (
                 <div
                     key={i}
                     className={styles.particle}
                     style={{
-                        '--delay': `${Math.random() * 5}s`,
-                        '--duration': `${10 + Math.random() * 10}s`,
-                        '--x-start': `${Math.random() * 100}%`,
-                        '--x-end': `${Math.random() * 100}%`,
-                        '--size': `${2 + Math.random() * 4}px`,
+                        '--delay': `${config.delay}s`,
+                        '--duration': `${config.duration}s`,
+                        '--x-start': `${config.xStart}%`,
+                        '--x-end': `${config.xEnd}%`,
+                        '--size': `${config.size}px`,
                     } as React.CSSProperties}
                 />
             ))}
@@ -58,28 +67,40 @@ const FloatingParticles = () => {
     );
 };
 
+// Stable neural node positions - computed once
+const NEURAL_NODES = Array.from({ length: 8 }, (_, i) => ({
+    delay: i * 0.3,
+    x: 20 + (i % 4) * 20,
+    y: 30 + Math.floor(i / 4) * 40,
+}));
+
+const NEURAL_LINES = Array.from({ length: 6 }, (_, i) => ({
+    delay: i * 0.4,
+    rotation: i * 30,
+}));
+
 // Neural network animation
 const NeuralNetwork = () => {
     return (
         <div className={styles.neuralNetwork}>
-            {[...Array(8)].map((_, i) => (
+            {NEURAL_NODES.map((node, i) => (
                 <div
                     key={i}
                     className={styles.neuralNode}
                     style={{
-                        '--node-delay': `${i * 0.3}s`,
-                        '--node-x': `${20 + (i % 4) * 20}%`,
-                        '--node-y': `${30 + Math.floor(i / 4) * 40}%`,
+                        '--node-delay': `${node.delay}s`,
+                        '--node-x': `${node.x}%`,
+                        '--node-y': `${node.y}%`,
                     } as React.CSSProperties}
                 />
             ))}
-            {[...Array(6)].map((_, i) => (
+            {NEURAL_LINES.map((line, i) => (
                 <div
                     key={`line-${i}`}
                     className={styles.neuralLine}
                     style={{
-                        '--line-delay': `${i * 0.4}s`,
-                        '--rotation': `${i * 30}deg`,
+                        '--line-delay': `${line.delay}s`,
+                        '--rotation': `${line.rotation}deg`,
                     } as React.CSSProperties}
                 />
             ))}

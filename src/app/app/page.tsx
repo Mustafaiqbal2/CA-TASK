@@ -468,9 +468,6 @@ export default function AppPage() {
             <Sidebar />
             
             <div className={styles.container}>
-                {/* Location Banner */}
-                <LocationBanner />
-                
                 {/* Header */}
                 <header className={styles.header}>
                     <div className={styles.headerContent}>
@@ -485,7 +482,8 @@ export default function AppPage() {
                             <span className={styles.logoIcon}><SparkleIcon /></span>
                             <span className={styles.logoText}>Research<span className={styles.logoAi}>AI</span></span>
                         </div>
-                        <div className={styles.headerSpacer}>
+                        <div className={styles.headerActions}>
+                            <LocationBanner />
                             {formSchema && (
                                 <button
                                     onClick={() => transition('FORM_PREVIEW', 'view_form')}
@@ -574,38 +572,34 @@ export default function AppPage() {
                     <div ref={messagesEndRef} />
                 </div>
 
-                {/* Scroll Controls */}
-                {messages.length > 0 && (
-                    <div className={styles.scrollControls}>
-                        {showScrollTop && (
-                            <button 
-                                className={styles.scrollButton} 
-                                onClick={scrollToTop}
-                                title="Scroll to top"
-                            >
-                                <ChevronUpIcon />
-                            </button>
-                        )}
-                        {isLoading && (
-                            <button 
-                                className={`${styles.scrollButton} ${styles.autoScrollButton} ${autoScroll ? styles.active : ''}`}
-                                onClick={toggleAutoScroll}
-                                title={autoScroll ? "Auto-scroll ON (click to pause)" : "Auto-scroll OFF (click to resume)"}
-                            >
-                                {autoScroll ? <PauseIcon /> : <PlayIcon />}
-                            </button>
-                        )}
-                        {(showScrollBottom || !autoScroll) && (
-                            <button 
-                                className={styles.scrollButton} 
-                                onClick={scrollToBottom}
-                                title="Scroll to bottom"
-                            >
-                                <ChevronDownIcon />
-                            </button>
-                        )}
-                    </div>
-                )}
+                {/* Scroll Controls - Always visible floating button */}
+                <div className={styles.scrollControls}>
+                    {showScrollTop && (
+                        <button 
+                            className={styles.scrollButton} 
+                            onClick={scrollToTop}
+                            title="Scroll to top"
+                        >
+                            <ChevronUpIcon />
+                        </button>
+                    )}
+                    <button 
+                        className={`${styles.scrollButton} ${styles.autoScrollButton} ${autoScroll ? styles.active : ''}`}
+                        onClick={toggleAutoScroll}
+                        title={autoScroll ? "Auto-scroll ON (click to pause)" : "Auto-scroll OFF (click to resume)"}
+                    >
+                        {autoScroll ? <PauseIcon /> : <PlayIcon />}
+                    </button>
+                    {(showScrollBottom || !autoScroll) && (
+                        <button 
+                            className={styles.scrollButton} 
+                            onClick={scrollToBottom}
+                            title="Scroll to bottom"
+                        >
+                            <ChevronDownIcon />
+                        </button>
+                    )}
+                </div>
             </main>
 
             {/* Input Area */}

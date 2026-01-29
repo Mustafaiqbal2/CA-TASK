@@ -41,21 +41,47 @@ function useLocation() {
     setError(null);
 
     try {
-      // Lightweight client-side IP-based lookup (fallbacks to Unknown on failure)
-      const res = await fetch('https://ipapi.co/json/');
-      if (!res.ok) throw new Error('Failed to detect location');
-
+      // Use server-side API route to avoid CORS issues
+      const res = await fetch('/api/location');
       const data: any = await res.json();
+      
+      // Check if API returned an error or empty data
+      if (!res.ok || data.error || !data.city) {
+        throw new Error(data.error || 'Failed to detect location');
+      }
 
       setLocation({
-        city: data?.city ?? 'Unknown',
-        country: data?.country_name ?? 'Unknown',
-        region: data?.region ?? 'Unknown',
-        timezone: data?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+        city: data.city,
+        country: data.country || 'Unknown',
+        region: data.region || data.city,
+        timezone: data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
         isOverridden: false,
       });
     } catch (e) {
+      console.error('Location detection failed:', e);
       setError(e instanceof Error ? e.message : 'Detection failed');
+      
+      // Try timezone-based fallback on client side
+      try {
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const parts = timezone.split('/');
+        if (parts.length >= 2) {
+          const cityFromTz = parts[parts.length - 1].replace(/_/g, ' ');
+          setLocation({
+            city: cityFromTz,
+            country: 'Unknown',
+            region: parts[0].replace(/_/g, ' '),
+            timezone,
+            isOverridden: false,
+          });
+          setError(null); // Clear error since we got a fallback
+          return;
+        }
+      } catch {
+        // Ignore fallback errors
+      }
+      
+      // Keep previous location if available
       setLocationState(prev =>
         prev ?? {
           city: 'Unknown',
