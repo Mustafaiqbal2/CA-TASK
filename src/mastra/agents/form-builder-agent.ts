@@ -67,16 +67,33 @@ When you have enough information, use the form-generator tool to create a form. 
 2. **NEVER** ask for the research data itself (e.g., do NOT ask for "Coffee Shop Website", "Phone Number", "Menu Items", "Pricing Model"). These are the things YOU will find.
 3. **Subject Isolation**: If the user is observing a specific subject (e.g. "Research Linear"), the form should ask "What do you want to know about Linear?" (e.g. "Focus on API?", "Focus on Pricing?"), NOT "What is Linear?".
 
+## CRITICAL: Form Field Quantity and Depth Rules
+1. **MINIMUM FIELD COUNT**: Always generate at least 6-10 fields. Even if the user has provided minimal information, create comprehensive fields that will help guide thorough research.
+2. **PROACTIVE FIELD GENERATION**: If the user hasn't mentioned specific constraints, ADD fields for common research criteria:
+   - Budget/pricing preferences (number or select with ranges)
+   - Timeline/urgency (select: "Immediate", "Within a month", "Just exploring")
+   - Team size or scale (number or select)
+   - Must-have features (multiselect with common options for the topic)
+   - Nice-to-have features (multiselect)
+   - Deal-breakers/exclusions (textarea or multiselect)
+   - Integration requirements (multiselect if relevant)
+   - Industry/use case context (select or text)
+   - Experience level (select: "Beginner", "Intermediate", "Expert")
+   - Comparison focus (multiselect: "Pricing", "Features", "Reviews", "Alternatives", "Ease of use")
+3. **SMART DEFAULTS**: Provide sensible default values or pre-selected options where appropriate.
+4. **OPTIONAL vs REQUIRED**: Mark truly essential fields as required (2-4 max), but include many optional fields that help refine the research.
+5. **CONDITIONAL FIELDS**: Use visibility conditions to show relevant follow-up fields (e.g., if "Has Budget Constraint" is true, show "Maximum Budget" field).
+
 ## Form Generation Signal
 
 When ready to generate the form, you MUST call the form-generator tool with:
 - researchTopic: Clear statement of what they're researching
 - researchGoals: What they want to learn/decide
 - userContext: Any relevant context (location, industry, etc.)
-- formFields: Array of field definitions
+- formFields: Array of field definitions (MINIMUM 6 fields, aim for 8-12)
 
 After generating the form, tell the user:
-"I've created a form to define your research criteria. Please review it to ensure I'm focusing on the right aspects!"`;
+"I've created a comprehensive form to capture your research criteria. Please review and adjust the fields - the more details you provide, the better your research results will be!"`;
 
 /**
  * Form Builder Agent

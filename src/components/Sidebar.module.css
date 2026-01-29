@@ -1,0 +1,288 @@
+/* Sidebar Styles */
+
+.overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    z-index: 40;
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 280px;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+}
+
+.sidebar.open {
+    transform: translateX(0);
+}
+
+/* Desktop: sidebar is part of layout */
+@media (min-width: 768px) {
+    .sidebar {
+        position: relative;
+        transform: translateX(0);
+        flex-shrink: 0;
+    }
+    
+    .sidebar:not(.open) {
+        width: 0;
+        border-right: none;
+        overflow: hidden;
+    }
+    
+    .overlay {
+        display: none;
+    }
+    
+    .closeButton {
+        display: none;
+    }
+}
+
+.sidebarHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-4);
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.logoMini {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--accent-teal);
+    font-weight: var(--font-semibold);
+    font-size: var(--text-sm);
+}
+
+.logoMini svg {
+    width: 20px;
+    height: 20px;
+}
+
+.closeButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.closeButton:hover {
+    background: var(--glass-hover);
+    color: var(--text-primary);
+}
+
+.newChatButton {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: var(--space-3);
+    padding: var(--space-3);
+    background: var(--accent-gradient);
+    border: none;
+    border-radius: var(--radius-md);
+    color: white;
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.newChatButton:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.sessionsList {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-2);
+}
+
+.dateGroup {
+    margin-bottom: var(--space-3);
+}
+
+.dateLabel {
+    padding: var(--space-2) var(--space-3);
+    font-size: 11px;
+    font-weight: var(--font-semibold);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.sessionItem {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+}
+
+.sessionItem:hover {
+    background: var(--glass-hover);
+}
+
+.sessionItem.active {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.sessionIcon {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--glass-bg);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+}
+
+.sessionItem.active .sessionIcon {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--accent-teal);
+}
+
+.sessionContent {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sessionTitle {
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sessionMeta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.completeBadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    color: var(--accent-teal);
+}
+
+.completeBadge svg {
+    width: 10px;
+    height: 10px;
+}
+
+.deleteButton {
+    position: absolute;
+    right: var(--space-2);
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-secondary);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    opacity: 0;
+    transition: all 0.15s;
+}
+
+.sessionItem:hover .deleteButton {
+    opacity: 1;
+}
+
+.deleteButton:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+}
+
+.emptyState {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-8) var(--space-4);
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.emptyState p {
+    font-size: var(--text-sm);
+}
+
+.emptyHint {
+    font-size: var(--text-xs) !important;
+    margin-top: var(--space-1);
+    opacity: 0.7;
+}
+
+.sidebarFooter {
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--glass-border);
+}
+
+.footerText {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* Scrollbar styling */
+.sessionsList::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sessionsList::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.sessionsList::-webkit-scrollbar-thumb {
+    background: var(--glass-border);
+    border-radius: 3px;
+}
+
+.sessionsList::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}

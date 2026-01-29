@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
-import { useChat } from '@ai-sdk/react';
+import { useChat, type Message } from '@ai-sdk/react';
 import Link from 'next/link';
 import { useAppStore } from '@/lib/state-machine';
 import { ChatMessage } from '@/components/ChatMessage';
 import { FormPreview } from '@/components/FormPreview';
 import { FormActive } from '@/components/FormActive';
+import { Sidebar } from '@/components/Sidebar';
 
 import { Researching } from '@/components/Researching';
 import { ResearchResults } from '@/components/ResearchResults';
@@ -16,6 +17,15 @@ import styles from './app.module.css';
 const SparkleIcon = () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z" />
+    </svg>
+);
+
+// Menu icon for sidebar toggle
+const MenuIcon = () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <line x1="3" y1="12" x2="21" y2="12" />
+        <line x1="3" y1="6" x2="21" y2="6" />
+        <line x1="3" y1="18" x2="21" y2="18" />
     </svg>
 );
 
@@ -35,17 +45,51 @@ const SendIcon = () => (
     </svg>
 );
 
+// Helper to convert stored chat messages to AI SDK format
+function convertStoredMessagesToAiFormat(storedMessages: Array<{ id: string; role: 'user' | 'assistant'; content: string; timestamp: Date }>): Message[] {
+    return storedMessages.map(msg => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        createdAt: new Date(msg.timestamp),
+    }));
+}
+
 export default function AppPage() {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const formRef = useRef<HTMLFormElement>(null);
-    const { currentState, setFormSchema, transition, setError, formSchema } = useAppStore();
+    const { 
+        currentState, 
+        setFormSchema, 
+        transition, 
+        setError, 
+        formSchema, 
+        chatMessages, 
+        addChatMessage,
+        currentSessionId,
+        createNewSession,
+        saveCurrentSession,
+        toggleSidebar,
+        isSidebarOpen
+    } = useAppStore();
+    
+    // Track if we've hydrated from storage
+    const [isHydrated, setIsHydrated] = useState(false);
+    const lastSyncedMessageCount = useRef(0);
+    const lastSessionId = useRef<string | null>(null);
 
-    // Initialize Vercel AI SDK chat hook (v3.x API)
-    const { messages, input, setInput, handleSubmit, isLoading, error } = useChat({
+    // Convert stored messages to AI SDK format for initial messages
+    const initialMessages = convertStoredMessagesToAiFormat(chatMessages);
+
+    // Initialize Vercel AI SDK chat hook with persisted messages
+    const { messages, input, setInput, handleSubmit, isLoading, error, setMessages } = useChat({
         api: '/api/chat',
+        initialMessages: isHydrated ? initialMessages : [],
         onFinish: (message) => {
             checkForFormGeneration(message.content);
+            // Save session after each assistant message
+            saveCurrentSession();
         },
         onError: (err) => {
             console.error('Chat error:', err);
@@ -57,6 +101,81 @@ export default function AppPage() {
             });
         },
     });
+
+    // Hydrate from Zustand storage on mount
+    useEffect(() => {
+        // Zustand persist middleware hydrates async, so we wait a tick
+        const unsubscribe = useAppStore.persist.onFinishHydration(() => {
+            setIsHydrated(true);
+            const state = useAppStore.getState();
+            
+            // Create a new session if none exists
+            if (!state.currentSessionId) {
+                state.createNewSession();
+            }
+            
+            const storedMessages = state.chatMessages;
+            if (storedMessages.length > 0) {
+                setMessages(convertStoredMessagesToAiFormat(storedMessages));
+                lastSyncedMessageCount.current = storedMessages.length;
+            }
+            lastSessionId.current = state.currentSessionId;
+        });
+
+        // Check if already hydrated
+        if (useAppStore.persist.hasHydrated()) {
+            setIsHydrated(true);
+            const state = useAppStore.getState();
+            
+            // Create a new session if none exists
+            if (!state.currentSessionId) {
+                state.createNewSession();
+            }
+            
+            const storedMessages = state.chatMessages;
+            if (storedMessages.length > 0) {
+                setMessages(convertStoredMessagesToAiFormat(storedMessages));
+                lastSyncedMessageCount.current = storedMessages.length;
+            }
+            lastSessionId.current = state.currentSessionId;
+        }
+
+        return () => {
+            unsubscribe?.();
+        };
+    }, [setMessages]);
+
+    // Handle session switching - reset messages when session changes
+    useEffect(() => {
+        if (!isHydrated) return;
+        
+        if (currentSessionId && currentSessionId !== lastSessionId.current) {
+            // Session changed, load new messages
+            setMessages(convertStoredMessagesToAiFormat(chatMessages));
+            lastSyncedMessageCount.current = chatMessages.length;
+            lastSessionId.current = currentSessionId;
+        }
+    }, [currentSessionId, chatMessages, isHydrated, setMessages]);
+
+    // Sync new messages from useChat to Zustand store
+    useEffect(() => {
+        if (!isHydrated) return;
+        
+        // Only sync new messages that haven't been synced yet
+        if (messages.length > lastSyncedMessageCount.current) {
+            const newMessages = messages.slice(lastSyncedMessageCount.current);
+            newMessages.forEach(msg => {
+                // Only add complete messages (not streaming)
+                if (msg.content && msg.content.length > 0) {
+                    addChatMessage({
+                        role: msg.role as 'user' | 'assistant',
+                        content: msg.content,
+                    });
+                }
+            });
+            lastSyncedMessageCount.current = messages.length;
+        }
+    }, [messages, isHydrated, addChatMessage]);
 
     // Handle form schema processing and state transition
     const handleViewForm = useCallback((parsed: any) => {
@@ -199,6 +318,20 @@ export default function AppPage() {
         }
     };
 
+    // Show loading state until hydration is complete to prevent hydration mismatch
+    if (!isHydrated) {
+        return (
+            <div className={styles.container}>
+                <div className={styles.loadingState}>
+                    <div className={styles.loadingSpinner}>
+                        <SparkleIcon />
+                    </div>
+                    <p>Loading your session...</p>
+                </div>
+            </div>
+        );
+    }
+
     // Render different UI based on state
     if (currentState === 'FORM_PREVIEW' && formSchema) {
         return <FormPreview formSchema={formSchema} />;
@@ -236,55 +369,62 @@ export default function AppPage() {
     }
 
     return (
-        <div className={styles.container}>
-            {/* Header */}
-            <header className={styles.header}>
-                <div className={styles.headerContent}>
-                    <Link href="/" className={styles.backLink}>
-                        <BackIcon />
-                        <span>Back</span>
-                    </Link>
-                    <div className={styles.logo}>
-                        <span className={styles.logoIcon}><SparkleIcon /></span>
-                        <span className={styles.logoText}>Research<span className={styles.logoAi}>AI</span></span>
-                    </div>
-                    <div className={styles.headerSpacer}>
-                        {formSchema && (
-                            <button
-                                onClick={() => transition('FORM_PREVIEW', 'view_form')}
-                                className={styles.viewFormButton}
-                            >
-                                View Form
-                            </button>
-                        )}
-                    </div>
-                </div>
-            </header>
-
-            {/* Chat Area */}
-            <main className={styles.chatArea}>
-                <div className={styles.messagesContainer}>
-                    {/* Welcome message if no messages yet */}
-                    {messages.length === 0 && (
-                        <div className={styles.welcome}>
-                            <div className={styles.welcomeIcon}>
-                                <SparkleIcon />
-                            </div>
-                            <h1 className={styles.welcomeTitle}>
-                                What would you like to <span className={styles.gradient}>research</span> today?
-                            </h1>
-                            <p className={styles.welcomeText}>
-                                I&apos;ll interview you to understand your needs, then create a customized form to gather the details for comprehensive research.
-                            </p>
-                            <div className={styles.suggestions}>
+        <div className={styles.appLayout}>
+            {/* Sidebar */}
+            <Sidebar />
+            
+            <div className={styles.container}>
+                {/* Header */}
+                <header className={styles.header}>
+                    <div className={styles.headerContent}>
+                        <button 
+                            className={styles.menuButton} 
+                            onClick={toggleSidebar}
+                            title="Toggle sidebar"
+                        >
+                            <MenuIcon />
+                        </button>
+                        <div className={styles.logo}>
+                            <span className={styles.logoIcon}><SparkleIcon /></span>
+                            <span className={styles.logoText}>Research<span className={styles.logoAi}>AI</span></span>
+                        </div>
+                        <div className={styles.headerSpacer}>
+                            {formSchema && (
                                 <button
-                                    className={styles.suggestionChip}
-                                    onClick={() => handleSuggestionClick("I want to find the best project management tool for my startup")}
-                                    type="button"
+                                    onClick={() => transition('FORM_PREVIEW', 'view_form')}
+                                    className={styles.viewFormButton}
                                 >
-                                    🚀 Best project management tools
+                                    View Form
                                 </button>
-                                <button
+                            )}
+                        </div>
+                    </div>
+                </header>
+
+                {/* Chat Area */}
+                <main className={styles.chatArea}>
+                    <div className={styles.messagesContainer}>
+                        {/* Welcome message if no messages yet */}
+                        {messages.length === 0 && (
+                            <div className={styles.welcome}>
+                                <div className={styles.welcomeIcon}>
+                                    <SparkleIcon />
+                                </div>
+                                <h1 className={styles.welcomeTitle}>
+                                    What would you like to <span className={styles.gradient}>research</span> today?
+                                </h1>
+                                <p className={styles.welcomeText}>
+                                    I&apos;ll interview you to understand your needs, then create a customized form to gather the details for comprehensive research.
+                                </p>
+                                <div className={styles.suggestions}>
+                                    <button
+                                        className={styles.suggestionChip}
+                                        onClick={() => handleSuggestionClick("I want to find the best project management tool for my startup")}
+                                        type="button"
+                                    >
+                                        🚀 Best project management tools
+                                    </button>
+                                    <button
                                     className={styles.suggestionChip}
                                     onClick={() => handleSuggestionClick("I'm researching electric vehicles to buy")}
                                     type="button"
@@ -373,6 +513,7 @@ export default function AppPage() {
                     </div>
                 </form>
             </footer>
+            </div>
         </div>
     );
 }

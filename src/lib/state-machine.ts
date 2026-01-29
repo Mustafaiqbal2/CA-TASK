@@ -50,13 +50,47 @@ export interface ChatMessage {
 }
 
 /**
+ * Chat session for history
+ */
+export interface ChatSession {
+    id: string;
+    title: string;
+    createdAt: Date;
+    updatedAt: Date;
+    state: AppState;
+    messages: ChatMessage[];
+    formSchema: FormSchema | null;
+    formData: FormData;
+    researchResults: ResearchResult | null;
+}
+
+/**
  * Research result structure
  */
 export interface ResearchResult {
     id: string;
     title: string;
     summary: string;
+    overview?: string;
     keyFindings: string[];
+    prosAndCons?: {
+        pros: string[];
+        cons: string[];
+    };
+    pricing?: {
+        overview: string;
+        tiers: Array<{
+            name: string;
+            price: string;
+            features: string;
+        }>;
+        notes?: string;
+    } | null;
+    competitors?: Array<{
+        name: string;
+        comparison: string;
+    }>;
+    recommendations?: string;
     sources: Array<{
         title: string;
         url: string;
@@ -104,14 +138,18 @@ export interface AppStoreState {
     // Error handling
     error: ErrorState | null;
 
-    // Interview data
+    // Session management
+    sessions: ChatSession[];
+    currentSessionId: string | null;
+
+    // Interview data (current session)
     chatMessages: ChatMessage[];
 
-    // Form data
+    // Form data (current session)
     formSchema: FormSchema | null;
     formData: FormData;
 
-    // Research data
+    // Research data (current session)
     researchResults: ResearchResult | null;
     researchProgress: number; // 0-100
     researchStatus: string;
@@ -119,10 +157,21 @@ export interface AppStoreState {
     // Location context
     location: LocationContext | null;
 
+    // Sidebar state
+    isSidebarOpen: boolean;
+
     // Actions
     transition: (to: AppState, trigger?: string) => boolean;
     goBack: () => boolean;
     reset: () => void;
+
+    // Session actions
+    createNewSession: () => string;
+    switchSession: (sessionId: string) => void;
+    deleteSession: (sessionId: string) => void;
+    updateSessionTitle: (sessionId: string, title: string) => void;
+    saveCurrentSession: () => void;
+    toggleSidebar: () => void;
 
     // State setters
     setFormSchema: (schema: FormSchema) => void;
@@ -139,12 +188,28 @@ export interface AppStoreState {
 // Initial State
 // ============================================
 
+const generateSessionId = () => `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+const createEmptySession = (): ChatSession => ({
+    id: generateSessionId(),
+    title: 'New Research',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    state: 'INTERVIEWING',
+    messages: [],
+    formSchema: null,
+    formData: {},
+    researchResults: null,
+});
+
 const initialState = {
     currentState: 'INTERVIEWING' as AppState,
     previousState: null as AppState | null,
     stateHistory: ['INTERVIEWING'] as AppState[],
     transitionLogs: [] as TransitionLog[],
     error: null as ErrorState | null,
+    sessions: [] as ChatSession[],
+    currentSessionId: null as string | null,
     chatMessages: [] as ChatMessage[],
     formSchema: null as FormSchema | null,
     formData: {} as FormData,
@@ -152,6 +217,7 @@ const initialState = {
     researchProgress: 0,
     researchStatus: '',
     location: null as LocationContext | null,
+    isSidebarOpen: false,
 };
 
 // ============================================
@@ -348,15 +414,159 @@ export const useAppStore = create<AppStoreState>()(
                     console.error('[StateMachine] Error:', error.code, error.message);
                 }
             },
+
+            /**
+             * Toggle sidebar visibility
+             */
+            toggleSidebar: (): void => {
+                set((state) => ({ isSidebarOpen: !state.isSidebarOpen }));
+            },
+
+            /**
+             * Save current session data to sessions array
+             */
+            saveCurrentSession: (): void => {
+                const state = get();
+                if (!state.currentSessionId) return;
+
+                // Generate title from first user message or research topic
+                let title = 'New Research';
+                if (state.chatMessages.length > 0) {
+                    const firstUserMsg = state.chatMessages.find(m => m.role === 'user');
+                    if (firstUserMsg) {
+                        title = firstUserMsg.content.substring(0, 50) + (firstUserMsg.content.length > 50 ? '...' : '');
+                    }
+                }
+                if (state.formSchema?.researchTopic) {
+                    title = state.formSchema.researchTopic.substring(0, 50);
+                }
+
+                const updatedSession: ChatSession = {
+                    id: state.currentSessionId,
+                    title,
+                    createdAt: state.sessions.find(s => s.id === state.currentSessionId)?.createdAt || new Date(),
+                    updatedAt: new Date(),
+                    state: state.currentState,
+                    messages: state.chatMessages,
+                    formSchema: state.formSchema,
+                    formData: state.formData,
+                    researchResults: state.researchResults,
+                };
+
+                const existingIndex = state.sessions.findIndex(s => s.id === state.currentSessionId);
+                if (existingIndex >= 0) {
+                    const newSessions = [...state.sessions];
+                    newSessions[existingIndex] = updatedSession;
+                    set({ sessions: newSessions });
+                } else {
+                    set({ sessions: [updatedSession, ...state.sessions] });
+                }
+            },
+
+            /**
+             * Create a new chat session
+             */
+            createNewSession: (): string => {
+                const state = get();
+                
+                // Save current session first if it has content
+                if (state.currentSessionId && state.chatMessages.length > 0) {
+                    get().saveCurrentSession();
+                }
+
+                const newSession = createEmptySession();
+                
+                set({
+                    currentSessionId: newSession.id,
+                    currentState: 'INTERVIEWING',
+                    previousState: null,
+                    stateHistory: ['INTERVIEWING'],
+                    chatMessages: [],
+                    formSchema: null,
+                    formData: {},
+                    researchResults: null,
+                    researchProgress: 0,
+                    researchStatus: '',
+                    error: null,
+                    sessions: [newSession, ...state.sessions],
+                });
+
+                return newSession.id;
+            },
+
+            /**
+             * Switch to a different session
+             */
+            switchSession: (sessionId: string): void => {
+                const state = get();
+                
+                // Save current session first
+                if (state.currentSessionId && state.chatMessages.length > 0) {
+                    get().saveCurrentSession();
+                }
+
+                const session = state.sessions.find(s => s.id === sessionId);
+                if (!session) {
+                    console.warn('[StateMachine] Session not found:', sessionId);
+                    return;
+                }
+
+                set({
+                    currentSessionId: session.id,
+                    currentState: session.state,
+                    previousState: null,
+                    stateHistory: [session.state],
+                    chatMessages: session.messages,
+                    formSchema: session.formSchema,
+                    formData: session.formData,
+                    researchResults: session.researchResults,
+                    researchProgress: session.researchResults ? 100 : 0,
+                    researchStatus: session.researchResults ? 'Complete' : '',
+                    error: null,
+                });
+            },
+
+            /**
+             * Delete a session
+             */
+            deleteSession: (sessionId: string): void => {
+                const state = get();
+                const newSessions = state.sessions.filter(s => s.id !== sessionId);
+                
+                // If deleting current session, switch to another or create new
+                if (state.currentSessionId === sessionId) {
+                    if (newSessions.length > 0) {
+                        get().switchSession(newSessions[0].id);
+                    } else {
+                        get().createNewSession();
+                    }
+                }
+                
+                set({ sessions: newSessions });
+            },
+
+            /**
+             * Update session title
+             */
+            updateSessionTitle: (sessionId: string, title: string): void => {
+                const state = get();
+                const newSessions = state.sessions.map(s => 
+                    s.id === sessionId ? { ...s, title, updatedAt: new Date() } : s
+                );
+                set({ sessions: newSessions });
+            },
         }),
         {
             name: 'research-ai-state',
             // Only persist certain fields
             partialize: (state) => ({
                 currentState: state.currentState,
+                currentSessionId: state.currentSessionId,
+                sessions: state.sessions,
                 chatMessages: state.chatMessages,
                 formSchema: state.formSchema,
                 formData: state.formData,
+                researchResults: state.researchResults,
                 location: state.location,
             }),
         }
@@ -416,6 +626,21 @@ export const useLocation = () => useAppStore((state) => state.location);
  * Hook to get error state
  */
 export const useError = () => useAppStore((state) => state.error);
+
+/**
+ * Hook to get sessions
+ */
+export const useSessions = () => useAppStore((state) => state.sessions);
+
+/**
+ * Hook to get current session ID
+ */
+export const useCurrentSessionId = () => useAppStore((state) => state.currentSessionId);
+
+/**
+ * Hook to get sidebar state
+ */
+export const useSidebarState = () => useAppStore((state) => state.isSidebarOpen);
 
 // ============================================
 // Transition Guard Functions

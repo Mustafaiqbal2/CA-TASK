@@ -1,5 +1,13 @@
+/* App Layout with Sidebar */
+.appLayout {
+    display: flex;
+    min-height: 100vh;
+    background: var(--bg-primary);
+}
+
 /* Main container */
 .container {
+    flex: 1;
     min-height: 100vh;
     background: var(--bg-primary);
     display: flex;
@@ -38,6 +46,59 @@
     border-radius: var(--radius-md);
     color: var(--text-primary);
     cursor: pointer;
+}
+
+/* Loading state */
+.loadingState {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    gap: var(--space-4);
+    color: var(--text-muted);
+}
+
+.loadingSpinner {
+    width: 48px;
+    height: 48px;
+    color: var(--accent-teal);
+    animation: spin 2s linear infinite;
+}
+
+.loadingSpinner svg {
+    width: 100%;
+    height: 100%;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Menu Button */
+.menuButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.menuButton:hover {
+    background: var(--glass-hover);
+    color: var(--text-primary);
+    border-color: var(--accent-teal);
 }
 
 /* Header */
