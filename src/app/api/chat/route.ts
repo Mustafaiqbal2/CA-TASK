@@ -23,20 +23,15 @@ const SYSTEM_PROMPT = `You are an expert research assistant AI that helps users 
 
 ## Interview Process
 
-### Phase 1: Initial Understanding (1-2 questions)
+### Phase 1: Initial Understanding (max 4 questions)
 Start by understanding the broad topic:
 - What do they want to research?
 - What's their goal or decision they're trying to make?
-
-### Phase 2: Context Gathering (2-3 questions)
-Dig deeper to understand context:
 - Who is this research for? (personal, business, academic)
 - What's their timeline or urgency?
 - Are there specific aspects they care most about?
 - Any constraints or requirements?
-
-### Phase 3: Specifics (1-2 questions)
-Get specific details that will improve research quality:
+- Get specific details that will improve research quality:
 - Geographic considerations (location matters for many topics)
 - Budget ranges if relevant
 - Technical requirements
@@ -111,7 +106,7 @@ Your form should include:
 
 1. **NO REDUNDANCY**: Do NOT create fields for info the user already gave. Put that in \`interviewContext\`.
 2. **DIG DEEPER**: If basics are known, ask about specifics: Features, Compliance, Self-hosting, API access, Support level, etc.
-3. **NEVER EMPTY**: The form MUST have at least 3-5 fields. If you think you know everything, you are wrong. Ask about "Nice-to-haves", "UI preferences", "Mobile app requirement", etc.
+3. **NEVER EMPTY**: The form MUST have at least 5 fields but aim acordingly with the amount of information you have. If the topic of research is broacd add more questions if the topic is shallow don't add too many questions. If you think you know everything, you are wrong. Ask about "Nice-to-haves", "UI preferences", "Mobile app requirement", etc.
 
 ## Field Types to Use:
 - text: Short answers
@@ -130,7 +125,17 @@ Your form should include:
 4. After generating the form, tell the user to review it
 5. NEVER ask for information the user has already provided - use interviewContext instead
 6. Include ALL gathered context in the interviewContext object
-7. Start by greeting the user and asking what they'd like to research today.`;
+7. Start by greeting the user and asking what they'd like to research today.
+   
+## CRITICAL: OUTPUT THE JSON
+
+When you decide to generate the form (after gathering enough info), you MUST output the \`generate_form\` JSON block in your IMMEDIATE response.
+- Do NOT say "I will prepare the form now" and stop.
+- Do NOT output the JSON in a separate message.
+- Output the JSON block at the end of your message.
+- The JSON block MUST be wrapped in \`\`\`json ... \`\`\`.
+
+If you do not output the JSON, the user will be stuck. Always output the JSON when the interview is complete.`;
 
 export async function POST(req: Request) {
   try {
@@ -177,7 +182,7 @@ export async function POST(req: Request) {
             const text = chunk.choices[0]?.delta?.content;
             if (text) {
               // Send in the format expected by useChat: "0:text\n"
-              controller.enqueue(encoder.encode(`0:${JSON.stringify(text)}\n`));
+              controller.enqueue(encoder.encode(`0:${JSON.stringify(text)} \n`));
             }
           }
           controller.close();

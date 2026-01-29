@@ -87,12 +87,16 @@ export function Researching() {
                         break;
                     }
                     chunkCount++;
-                    console.log(`[CLIENT] Chunk ${chunkCount} received, size:`, value.length);
+                    const newChunk = decoder.decode(value, { stream: true });
+                    buffer += newChunk;
 
-                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    // Keep the last line in the buffer as it might be incomplete
+                    buffer = lines.pop() || '';
 
-                    const lines = chunk.split('\n');
                     for (const line of lines) {
+                        if (line.trim() === '') continue;
+
                         if (line.startsWith('0:')) {
                             const rawContent = line.substring(2);
                             // Cleanup JSON string
@@ -100,7 +104,10 @@ export function Researching() {
                             try {
                                 content = JSON.parse(rawContent);
                             } catch (e) {
-                                content = rawContent;
+                                // If partial parse fails, it might be due to split line (should be handled by buffer now)
+                                // or malformed content. We skip to avoid corruption.
+                                console.warn('Failed to parse stream line:', line.substring(0, 50) + '...');
+                                continue;
                             }
 
                             // Check for System messages
@@ -109,17 +116,34 @@ export function Researching() {
                                 setLogs(prev => [...prev, `> ${message}`]);
 
                                 // Update progress based on message content
+                                const currentProgress = useAppStore.getState().researchProgress;
+                                let newProgress = currentProgress;
+                                let statusText = '';
+
                                 if (message.includes('Using tool webSearch') || message.includes('web-search')) {
-                                    setResearchProgress(Math.min(useAppStore.getState().researchProgress + 8, 60), 'Searching the web...');
+                                    newProgress = Math.min(currentProgress + 8, 60);
+                                    statusText = 'Searching the web...';
                                 } else if (message.includes('dataSynthesis') || message.includes('data-synthesis')) {
-                                    setResearchProgress(Math.min(useAppStore.getState().researchProgress + 10, 85), 'Synthesizing data...');
+                                    newProgress = Math.min(currentProgress + 10, 85);
+                                    statusText = 'Synthesizing data...';
                                 } else if (message.includes('completed')) {
-                                    setResearchProgress(Math.min(useAppStore.getState().researchProgress + 5, 90), 'Processing results...');
+                                    newProgress = Math.min(currentProgress + 5, 90);
+                                    statusText = 'Processing results...';
                                 } else if (message.includes('Step completed')) {
-                                    setResearchProgress(Math.min(useAppStore.getState().researchProgress + 3, 88), 'Analyzing...');
+                                    newProgress = Math.min(currentProgress + 3, 88);
+                                    statusText = 'Analyzing...';
                                 } else {
                                     // Generic progress update for other system messages
-                                    setResearchProgress(Math.min(useAppStore.getState().researchProgress + 2, 80), message.substring(0, 50));
+                                    newProgress = Math.min(currentProgress + 2, 80);
+                                    statusText = message.substring(0, 50);
+                                }
+
+                                // Only update if progressing forward
+                                if (newProgress > currentProgress) {
+                                    setResearchProgress(newProgress, statusText);
+                                } else if (statusText) {
+                                    // Update text even if progress doesn't move
+                                    setResearchProgress(currentProgress, statusText);
                                 }
                             }
                             // Check for Errors
@@ -127,7 +151,8 @@ export function Researching() {
                                 setLogs(prev => [...prev, `❌ ${content}`]);
                             }
                             // Append text content (this is the actual response JSON)
-                            else if (typeof content === 'string' && content.trim()) {
+                            else if (typeof content === 'string') {
+                                // Accumulate ALL string content to preserve JSON integrity
                                 finalJson += content;
                             }
                         }
@@ -231,11 +256,14 @@ export function Researching() {
                     }
 
                 } catch (parseError) {
-                    console.error('Failed to parse result JSON', parseError, finalJson);
+                    console.error('Failed to parse result JSON', parseError);
+                    console.log('Final JSON Length:', finalJson.length);
+                    console.log('Final JSON Snippet:', finalJson.substring(0, 500) + '...' + finalJson.substring(finalJson.length - 500));
+
                     // Fallback for demo if parsing fails but we got text
                     setResearchResults({
                         title: `Research Report: ${formSchema?.researchTopic}`,
-                        summary: finalJson.substring(0, 500) + '...',
+                        summary: finalJson.replace(/```json/g, '').replace(/```/g, '').trim().substring(0, 1000) + '...',
                         keyFindings: ["Could not parse structured findings. See summary."],
                         sources: [],
                         timestamp: new Date(),

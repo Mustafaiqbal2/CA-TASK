@@ -3,7 +3,7 @@ import { mastra } from '@/mastra';
 import { streamText } from 'ai';
 
 // Allow long running research tasks
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
     console.log('========== RESEARCH API CALLED ==========');
@@ -90,7 +90,22 @@ export async function POST(req: Request) {
                             researcher.stream(userPrompt, {
                                 maxSteps: 10, // Allow more steps for complete research cycle
                                 onStepFinish: (step) => {
-                                    console.log('[AGENT-STEP]', step);
+                                    // Check for report in tool results or content
+                                    // This is critical if the agent doesn't stream the tool output as text deltas
+                                    const anyStep = step as any;
+                                    const toolName = anyStep.toolName || anyStep.payload?.toolName;
+
+                                    if (anyStep.type === 'tool-result' && (toolName === 'dataSynthesis' || toolName === 'data-synthesis')) {
+                                        // Extract text content from the step
+                                        const content = anyStep.content || [];
+                                        for (const item of content) {
+                                            if (item.type === 'text' && item.text) {
+                                                console.log('[Research API] Found report in step-finish, streaming to client...');
+                                                // Send as a standard text chunk so client accumulates it
+                                                controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(item.text)}\n`));
+                                            }
+                                        }
+                                    }
                                 }
                             }),
                             timeoutPromise
@@ -110,30 +125,31 @@ export async function POST(req: Request) {
 
                     for await (const part of result.fullStream) {
                         chunkCount++;
-                        console.log(`[16-${chunkCount}] Received chunk type:`, (part as any).type);
+                        if (chunkCount % 50 === 0) console.log(`[Research API] Processed ${chunkCount} chunks...`);
 
                         const chunk = part as any;
+                        
                         if (chunk.type === 'text-delta') {
-                            // Handle both direct textDelta and payload.textDelta
-                            const text = chunk.textDelta || chunk.payload?.textDelta || '';
-                            if (text) {
+                            // Mastra v1.x with AI SDK v5+ uses chunk.payload.text
+                            // AI SDK v4 (legacy) uses chunk.textDelta
+                            const text = chunk.payload?.text || chunk.textDelta || '';
+                            if (text && typeof text === 'string') {
                                 controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(text)}\n`));
                             }
                         } else if (chunk.type === 'tool-call') {
-                            // Mastra uses payload.name for tool name
-                            const toolName = chunk.toolName || chunk.payload?.name || chunk.payload?.toolName || 'unknown tool';
+                            // Mastra uses payload.toolName for tool name
+                            const toolName = chunk.payload?.toolName || chunk.toolName || 'unknown tool';
                             const toolMsg = `\n[System: Using tool ${toolName}...]`;
                             controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(toolMsg)}\n`));
-                            console.log('[TOOL-CALL]', toolName);
                         } else if (chunk.type === 'tool-result') {
                             // Send tool result notification
-                            const toolName = chunk.toolName || chunk.payload?.toolName || 'tool';
+                            const toolName = chunk.payload?.toolName || chunk.toolName || 'tool';
                             const resultMsg = `\n[System: ${toolName} completed]`;
                             controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(resultMsg)}\n`));
                         } else if (chunk.type === 'error') {
-                            const errorMsg = `\n[System Error: ${chunk.error || chunk.payload?.error || 'Unknown error'}]`;
+                            const errorMsg = `\n[System Error: ${chunk.payload?.error || chunk.error || 'Unknown error'}]`;
                             controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(errorMsg)}\n`));
-                            console.error('[CHUNK-ERROR]', chunk.error || chunk.payload);
+                            console.error('[CHUNK-ERROR]', chunk.payload || chunk.error);
                         } else if (chunk.type === 'step-finish') {
                             // Notify about step completion
                             const stepMsg = `\n[System: Step completed, proceeding...]`;
@@ -141,7 +157,7 @@ export async function POST(req: Request) {
                         }
                     }
 
-                    console.log('[17] Stream completed, total chunks:', chunkCount);
+                    console.log('[Research API] Stream completed');
                     controller.close();
 
                 } catch (error) {

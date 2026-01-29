@@ -39,7 +39,7 @@ export default function AppPage() {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const formRef = useRef<HTMLFormElement>(null);
-    const { currentState, setFormSchema, transition, setError } = useAppStore();
+    const { currentState, setFormSchema, transition, setError, formSchema } = useAppStore();
 
     // Initialize Vercel AI SDK chat hook (v3.x API)
     const { messages, input, setInput, handleSubmit, isLoading, error } = useChat({
@@ -64,7 +64,7 @@ export default function AppPage() {
             // Process interview context
             const interviewContext = parsed.form.interviewContext || {};
 
-            const formSchema = {
+            const newFormSchema = {
                 id: `form_${Date.now()}`,
                 title: parsed.form.title,
                 description: parsed.form.description,
@@ -114,13 +114,13 @@ export default function AppPage() {
                 createdAt: new Date(),
             };
 
-            setFormSchema(formSchema);
+            setFormSchema(newFormSchema);
 
             // Also pre-populate form data with interview context values
             const prefilledData: Record<string, any> = {};
 
             // Add values from fields with prefilledFromInterview
-            formSchema.fields.forEach((field: any) => {
+            newFormSchema.fields.forEach((field: any) => {
                 if (field.prefilledFromInterview?.value !== undefined) {
                     prefilledData[field.id] = field.prefilledFromInterview.value;
                 }
@@ -144,7 +144,8 @@ export default function AppPage() {
 
     // Check if AI response contains a form schema
     const checkForFormGeneration = useCallback((content: string) => {
-        const jsonMatch = content.match(/```json\n([\s\S]*?)```/);
+        // More robust regex: optional json tag, flexible whitespace
+        const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
         if (jsonMatch) {
             try {
                 const parsed = JSON.parse(jsonMatch[1]);
@@ -194,21 +195,17 @@ export default function AppPage() {
             e.preventDefault();
             if (formRef.current && input?.trim() && !isLoading) {
                 formRef.current.requestSubmit();
-                // Ensure focus remains
-                /* setTimeout(() => {
-                    textareaRef.current?.focus();
-                }, 0); */
             }
         }
     };
 
     // Render different UI based on state
-    if (currentState === 'FORM_PREVIEW' && useAppStore.getState().formSchema) {
-        return <FormPreview formSchema={useAppStore.getState().formSchema!} />;
+    if (currentState === 'FORM_PREVIEW' && formSchema) {
+        return <FormPreview formSchema={formSchema} />;
     }
 
-    if (currentState === 'FORM_ACTIVE' && useAppStore.getState().formSchema) {
-        return <FormActive formSchema={useAppStore.getState().formSchema!} />;
+    if (currentState === 'FORM_ACTIVE' && formSchema) {
+        return <FormActive formSchema={formSchema} />;
     }
 
     if (currentState === 'RESEARCHING') {
@@ -252,7 +249,7 @@ export default function AppPage() {
                         <span className={styles.logoText}>Research<span className={styles.logoAi}>AI</span></span>
                     </div>
                     <div className={styles.headerSpacer}>
-                        {useAppStore.getState().formSchema && (
+                        {formSchema && (
                             <button
                                 onClick={() => transition('FORM_PREVIEW', 'view_form')}
                                 className={styles.viewFormButton}
