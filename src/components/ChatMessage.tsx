@@ -70,7 +70,8 @@ function ChatMessageComponent({ role, content, isStreaming, onViewForm }: ChatMe
         // Match both complete and incomplete JSON blocks
         // 1. Complete block: ```json\n...```
         // 2. Start of block: ```json
-        const parts = [];
+        type ContentPart = { type: string; content: string; fullMatch?: string };
+        const parts: ContentPart[] = [];
         let currentIndex = 0;
         const jsonStartRegex = /```json\n?/g;
 
@@ -152,7 +153,7 @@ function ChatMessageComponent({ role, content, isStreaming, onViewForm }: ChatMe
                     return (
                         <div
                             key={index}
-                            dangerouslySetInnerHTML={{ __html: formatContent(part.fullMatch) }}
+                            dangerouslySetInnerHTML={{ __html: formatContent(part.fullMatch || part.content) }}
                         />
                     );
                 }

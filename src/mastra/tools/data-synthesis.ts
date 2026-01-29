@@ -1,11 +1,17 @@
 
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 
+/**
+ * Data Synthesis Tool
+ * 
+ * Uses OpenAI GPT-4o-mini to synthesize research data from multiple sources
+ * into a structured summary with key findings.
+ */
 export const dataSynthesisTool = createTool({
     id: 'data-synthesis',
-    description: 'Synthesize research data from multiple sources into a summary',
+    description: 'Synthesize research data from multiple sources into a structured summary with key findings',
     inputSchema: z.object({
         sources: z.array(z.object({
             content: z.string(),
@@ -19,41 +25,39 @@ export const dataSynthesisTool = createTool({
         sources: z.array(z.string()),
     }),
     execute: async ({ sources, query }) => {
-        const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+        const apiKey = process.env.OPENAI_API_KEY;
         if (!apiKey) {
-            throw new Error('GOOGLE_GENERATIVE_AI_API_KEY is not set');
+            throw new Error('OPENAI_API_KEY is not set');
         }
 
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+        const openai = new OpenAI({ apiKey });
 
-        const prompt = `
-            You are a research analyst. Synthesize the following information to answer the query: "${query}".
+        const prompt = `You are a research analyst. Synthesize the following information to answer the query: "${query}".
             
-            Sources:
-            ${sources.map((s: { url: string; content: string }, i: number) => `[${i + 1}] (${s.url}): ${s.content}`).join('\n\n')}
-            
-            Provide a concise summary and a list of key findings.
-            Return ONLY a JSON object with this structure:
-            {
-                "summary": "comprehensive summary...",
-                "keyFindings": ["finding 1", "finding 2"...],
-                "sources": ["url1", "url2"...]
-            }
-        `;
+Sources:
+${sources.map((s: { url: string; content: string }, i: number) => `[${i + 1}] (${s.url}): ${s.content}`).join('\n\n')}
+
+Provide a concise summary and a list of key findings.
+Return ONLY a JSON object with this structure (no markdown, no code blocks):
+{
+    "summary": "comprehensive summary...",
+    "keyFindings": ["finding 1", "finding 2"...],
+    "sources": ["url1", "url2"...]
+}`;
 
         try {
-            const result = await model.generateContent(prompt);
-            const response = result.response;
-            const text = response.text();
+            const result = await openai.chat.completions.create({
+                model: 'gpt-4o',
+                messages: [{ role: 'user', content: prompt }],
+                response_format: { type: 'json_object' },
+            });
 
-            // simple cleanup to get JSON
-            const jsonStr = text.replace(/```json\n?|\n?```/g, '');
-            const data = JSON.parse(jsonStr);
+            const text = result.choices[0]?.message?.content || '{}';
+            const data = JSON.parse(text);
 
             return {
-                summary: data.summary,
-                keyFindings: data.keyFindings,
+                summary: data.summary || 'No summary available',
+                keyFindings: data.keyFindings || [],
                 sources: data.sources || sources.map((s: { url: string }) => s.url),
             };
         } catch (error) {
@@ -62,3 +66,5 @@ export const dataSynthesisTool = createTool({
         }
     },
 });
+
+export default dataSynthesisTool;

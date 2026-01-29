@@ -38,11 +38,12 @@ export async function POST(req: Request) {
         }
         console.log('[6] Researcher agent retrieved successfully');
 
+
         // Validate API keys
         console.log('[7] Checking API keys...');
-        if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
-            console.error('[ERROR] GOOGLE_GENERATIVE_AI_API_KEY not set');
-            return new Response(JSON.stringify({ error: 'Missing GOOGLE_GENERATIVE_AI_API_KEY' }), { status: 500 });
+        if (!process.env.OPENAI_API_KEY) {
+            console.error('[ERROR] OPENAI_API_KEY not set');
+            return new Response(JSON.stringify({ error: 'Missing OPENAI_API_KEY' }), { status: 500 });
         }
         if (!process.env.TAVILY_API_KEY) {
             console.error('[ERROR] TAVILY_API_KEY not set');
