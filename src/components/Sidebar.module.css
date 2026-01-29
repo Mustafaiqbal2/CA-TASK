@@ -21,13 +21,17 @@
     height: 100vh;
     height: 100dvh; /* Dynamic viewport height for mobile */
     width: 280px;
+    max-width: 85vw; /* Prevent sidebar from being too wide on small screens */
     background: var(--bg-secondary);
     border-right: 1px solid var(--glass-border);
     display: flex;
     flex-direction: column;
     z-index: 50;
     transform: translateX(-100%);
-    transition: transform 0.3s ease;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    /* Safe area for notched phones */
+    padding-top: env(safe-area-inset-top, 0);
+    padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
 .sidebar.open {
@@ -39,8 +43,11 @@
     .sidebar {
         position: relative;
         height: 100%; /* Fill parent height instead of viewport */
+        max-width: 280px;
         transform: translateX(0);
         flex-shrink: 0;
+        padding-top: 0;
+        padding-bottom: 0;
     }
     
     .sidebar:not(.open) {
@@ -113,11 +120,18 @@
     font-weight: var(--font-medium);
     cursor: pointer;
     transition: all 0.2s;
+    min-height: 48px; /* Touch-friendly size */
+    -webkit-tap-highlight-color: transparent;
 }
 
 .newChatButton:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.newChatButton:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.2);
 }
 
 .sessionsList {
@@ -149,10 +163,19 @@
     cursor: pointer;
     transition: all 0.15s;
     position: relative;
+    /* Better touch target for mobile */
+    min-height: 48px;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .sessionItem:hover {
     background: var(--glass-hover);
+}
+
+/* Active state for touch */
+.sessionItem:active {
+    background: var(--glass-hover);
+    transform: scale(0.98);
 }
 
 .sessionItem.active {

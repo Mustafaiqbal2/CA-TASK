@@ -331,13 +331,44 @@ export const useAppStore = create<AppStoreState>()(
                 console.log('[StateMachine] Starting new research session');
                 const state = get();
                 
+                // Check if current session is already empty (no messages, no research results)
+                // If so, just reset to INTERVIEWING state without creating a new session
+                const isCurrentSessionEmpty = state.chatMessages.length === 0 && 
+                                              !state.researchResults && 
+                                              !state.formSchema;
+                
+                if (isCurrentSessionEmpty && state.currentSessionId) {
+                    // Just reset state without creating duplicate empty session
+                    set({
+                        currentState: 'INTERVIEWING',
+                        previousState: null,
+                        stateHistory: ['INTERVIEWING'],
+                        error: null,
+                    });
+                    return;
+                }
+                
                 // Save current session first if it has content
                 if (state.currentSessionId && (state.chatMessages.length > 0 || state.researchResults)) {
                     get().saveCurrentSession();
                 }
                 
-                // Create a new session (this preserves existing sessions)
-                get().createNewSession();
+                // Check if there's already an empty session we can switch to
+                const existingEmptySession = state.sessions.find(s => 
+                    s.id !== state.currentSessionId && 
+                    s.messages.length === 0 && 
+                    !s.researchResults && 
+                    !s.formSchema &&
+                    s.state === 'INTERVIEWING'
+                );
+                
+                if (existingEmptySession) {
+                    // Switch to existing empty session instead of creating a new one
+                    get().switchSession(existingEmptySession.id);
+                } else {
+                    // Create a new session (this preserves existing sessions)
+                    get().createNewSession();
+                }
             },
 
             /**
@@ -463,13 +494,50 @@ export const useAppStore = create<AppStoreState>()(
 
             /**
              * Create a new chat session
+             * Will reuse existing empty session if current one is already empty
              */
             createNewSession: (): string => {
                 const state = get();
                 
+                // If current session is already empty, just return its ID
+                const isCurrentEmpty = state.chatMessages.length === 0 && 
+                                       !state.researchResults && 
+                                       !state.formSchema &&
+                                       state.currentState === 'INTERVIEWING';
+                
+                if (isCurrentEmpty && state.currentSessionId) {
+                    return state.currentSessionId;
+                }
+                
                 // Save current session first if it has content
                 if (state.currentSessionId && state.chatMessages.length > 0) {
                     get().saveCurrentSession();
+                }
+                
+                // Check if there's an existing empty session we can reuse
+                const existingEmptySession = state.sessions.find(s => 
+                    s.messages.length === 0 && 
+                    !s.researchResults && 
+                    !s.formSchema &&
+                    s.state === 'INTERVIEWING'
+                );
+                
+                if (existingEmptySession) {
+                    // Reuse existing empty session
+                    set({
+                        currentSessionId: existingEmptySession.id,
+                        currentState: 'INTERVIEWING',
+                        previousState: null,
+                        stateHistory: ['INTERVIEWING'],
+                        chatMessages: [],
+                        formSchema: null,
+                        formData: {},
+                        researchResults: null,
+                        researchProgress: 0,
+                        researchStatus: '',
+                        error: null,
+                    });
+                    return existingEmptySession.id;
                 }
 
                 const newSession = createEmptySession();

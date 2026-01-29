@@ -94,24 +94,30 @@
     border-radius: var(--radius-md);
     color: var(--text-secondary);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .menuButton:hover {
     background: var(--glass-hover);
     color: var(--text-primary);
     border-color: var(--accent-teal);
+    transform: scale(1.02);
+}
+
+.menuButton:active {
+    transform: scale(0.98);
 }
 
 /* Header */
 .header {
     height: 60px;
     border-bottom: 1px solid var(--glass-border);
-    background: rgba(10, 10, 10, 0.5);
-    backdrop-filter: blur(12px);
+    background: rgba(10, 10, 10, 0.8);
+    backdrop-filter: blur(16px);
     position: sticky;
     top: 0;
     z-index: 10;
+    flex-shrink: 0; /* Prevent header from shrinking */
 }
 
 .headerContent {
@@ -191,8 +197,8 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    padding: var(--space-4) 0;
     position: relative;
+    min-height: 0; /* Critical for flex children to scroll properly */
 }
 
 .messagesContainer {
@@ -203,28 +209,30 @@
     max-width: 800px;
     width: 100%;
     margin: 0 auto;
-    padding: 0 var(--space-4);
+    padding: var(--space-4);
+    padding-bottom: 72px; /* Space for scroll controls */
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
+    min-height: 0; /* Critical for flex overflow */
 }
 
-/* Scroll Controls - Fixed floating at bottom right */
+/* Scroll Controls - Positioned inside chat area */
 .scrollControls {
-    position: fixed;
-    right: 24px;
-    bottom: 100px; /* Above the input area */
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    z-index: 100;
+    z-index: 20;
 }
 
 /* Mobile adjustments */
 @media (max-width: 768px) {
     .scrollControls {
-        right: 16px;
-        bottom: 120px; /* Higher on mobile to avoid input overlap */
+        right: 12px;
+        bottom: 12px;
     }
 }
 
@@ -244,6 +252,10 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     opacity: 1;
     animation: scrollButtonFadeIn 0.2s ease;
+    /* Ensure minimum touch target size */
+    min-width: 44px;
+    min-height: 44px;
+    -webkit-tap-highlight-color: transparent;
 }
 
 @keyframes scrollButtonFadeIn {
@@ -458,9 +470,12 @@
 /* Input Area */
 .inputArea {
     padding: var(--space-4);
-    background: linear-gradient(to top, var(--bg-primary) 80%, transparent);
+    padding-top: var(--space-3);
+    background: var(--bg-primary);
+    border-top: 1px solid var(--glass-border);
     position: relative;
     z-index: 10;
+    flex-shrink: 0; /* Prevent input area from shrinking */
 }
 
 .inputForm {
@@ -534,10 +549,16 @@
 .sendButton:not(:disabled) {
     background: var(--accent-gradient);
     color: white;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
 }
 
 .sendButton:not(:disabled):hover {
-    transform: scale(1.05);
+    transform: scale(1.08);
+    box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
+}
+
+.sendButton:not(:disabled):active {
+    transform: scale(0.95);
 }
 
 .sendButton:disabled {
@@ -661,15 +682,20 @@
     .scrollControls {
         right: 12px;
         bottom: 12px;
+        gap: 6px;
     }
 
     .scrollButton {
         width: 36px;
         height: 36px;
+        min-width: 44px;
+        min-height: 44px;
+        border-radius: 10px;
     }
 
     .inputArea {
         padding: var(--space-3);
+        padding-bottom: max(var(--space-3), env(safe-area-inset-bottom, 8px));
     }
 
     .sparkleDecor {
@@ -678,7 +704,7 @@
 
     .textarea {
         padding: 10px 12px;
-        font-size: var(--text-sm);
+        font-size: 16px; /* Prevent iOS zoom */
     }
 
     .hint {
