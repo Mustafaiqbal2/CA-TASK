@@ -3,7 +3,7 @@
 .container {
     min-height: 100vh;
     background: var(--bg-primary);
-    padding: var(--space-6);
+    padding: var(--space-4);
     position: relative;
 }
 
@@ -22,7 +22,7 @@
 }
 
 .content {
-    max-width: 800px;
+    max-width: 700px;
     margin: 0 auto;
     position: relative;
     z-index: 1;
@@ -31,7 +31,7 @@
 /* Header */
 .header {
     text-align: center;
-    margin-bottom: var(--space-8);
+    margin-bottom: var(--space-6);
     animation: fadeIn 0.5s ease;
 }
 
@@ -48,54 +48,58 @@
 }
 
 .headerIcon {
-    width: 56px;
-    height: 56px;
+    width: 48px;
+    height: 48px;
     background: var(--accent-gradient);
     border-radius: var(--radius-lg);
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto var(--space-4);
+    margin: 0 auto var(--space-3);
     color: white;
 }
 
 .headerIcon svg {
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
 }
 
 .title {
-    font-size: var(--text-3xl);
+    font-size: var(--text-2xl);
     font-weight: var(--font-bold);
     color: var(--text-primary);
     margin-bottom: var(--space-2);
 }
 
 .description {
-    font-size: var(--text-lg);
+    font-size: var(--text-base);
     color: var(--text-secondary);
-    max-width: 500px;
-    margin: 0 auto var(--space-4);
+    max-width: 450px;
+    margin: 0 auto var(--space-3);
 }
 
 .topic {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-4);
+    padding: var(--space-2) var(--space-3);
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-full);
+    flex-wrap: wrap;
+    justify-content: center;
 }
 
 .topicLabel {
     color: var(--text-muted);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
 }
 
 .topicValue {
     color: var(--accent-purple);
     font-weight: var(--font-medium);
+    font-size: var(--text-sm);
+    word-break: break-word;
 }
 
 /* Fields Container */
@@ -339,11 +343,15 @@
 /* Responsive */
 @media (max-width: 768px) {
     .container {
-        padding: var(--space-4);
+        padding: var(--space-3);
     }
 
     .title {
-        font-size: var(--text-2xl);
+        font-size: var(--text-xl);
+    }
+
+    .description {
+        font-size: var(--text-sm);
     }
 
     .actions {
@@ -352,5 +360,44 @@
 
     .conditionalField {
         margin-left: var(--space-2);
+    }
+}
+
+@media (max-width: 480px) {
+    .title {
+        font-size: var(--text-lg);
+    }
+
+    .headerIcon {
+        width: 40px;
+        height: 40px;
+    }
+
+    .headerIcon svg {
+        width: 20px;
+        height: 20px;
+    }
+
+    .topic {
+        padding: var(--space-1) var(--space-2);
+    }
+
+    .topicLabel,
+    .topicValue {
+        font-size: 11px;
+    }
+
+    .fieldCard {
+        padding: var(--space-3);
+    }
+
+    .fieldLabel {
+        font-size: var(--text-sm);
+    }
+
+    .editButton,
+    .confirmButton {
+        padding: var(--space-2) var(--space-4);
+        font-size: var(--text-sm);
     }
 }

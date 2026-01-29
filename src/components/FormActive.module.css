@@ -3,7 +3,7 @@
 .container {
     min-height: 100vh;
     background: var(--bg-primary);
-    padding: var(--space-6);
+    padding: var(--space-4);
     position: relative;
 }
 
@@ -22,7 +22,7 @@
 }
 
 .content {
-    max-width: 640px;
+    max-width: 560px;
     margin: 0 auto;
     position: relative;
     z-index: 1;
@@ -32,15 +32,15 @@
 .header {
     display: flex;
     align-items: center;
-    gap: var(--space-4);
-    margin-bottom: var(--space-6);
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
 }
 
 .backButton {
     display: flex;
     align-items: center;
     gap: var(--space-1);
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-2);
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-md);
@@ -48,6 +48,7 @@
     font-size: var(--text-sm);
     cursor: pointer;
     transition: all var(--transition-base);
+    flex-shrink: 0;
 }
 
 .backButton:hover {
@@ -57,23 +58,25 @@
 
 .headerInfo {
     flex: 1;
+    min-width: 0;
 }
 
 .title {
-    font-size: var(--text-xl);
+    font-size: var(--text-lg);
     font-weight: var(--font-bold);
     color: var(--text-primary);
     margin: 0;
+    word-break: break-word;
 }
 
 .stepIndicator {
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     color: var(--text-muted);
 }
 
 /* Progress */
 .progressContainer {
-    margin-bottom: var(--space-6);
+    margin-bottom: var(--space-4);
 }
 
 .progressBar {
@@ -81,7 +84,7 @@
     background: rgba(255, 255, 255, 0.1);
     border-radius: var(--radius-full);
     overflow: hidden;
-    margin-bottom: var(--space-3);
+    margin-bottom: var(--space-2);
 }
 
 .progressFill {
@@ -94,7 +97,9 @@
 .progressSteps {
     display: flex;
     justify-content: space-between;
-    padding: 0 var(--space-2);
+    padding: 0 var(--space-1);
+    overflow-x: auto;
+    gap: var(--space-1);
 }
 
 .progressDot {
@@ -364,19 +369,31 @@
 /* Responsive */
 @media (max-width: 768px) {
     .container {
-        padding: var(--space-4);
+        padding: var(--space-3);
     }
 
     .header {
         flex-wrap: wrap;
+        gap: var(--space-2);
     }
 
     .title {
-        font-size: var(--text-lg);
+        font-size: var(--text-base);
+    }
+
+    .stepIndicator {
+        font-size: 11px;
     }
 
     .actions {
         flex-direction: column-reverse;
+        gap: var(--space-2);
+    }
+
+    .primaryButton,
+    .secondaryButton {
+        width: 100%;
+        justify-content: center;
     }
 
     .primaryButton {
@@ -385,6 +402,42 @@
 
     .booleanContainer {
         flex-direction: column;
+    }
+
+    .progressDot {
+        width: 10px;
+        height: 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .backButton {
+        padding: var(--space-1) var(--space-2);
+    }
+
+    .backButton span {
+        display: none;
+    }
+
+    .title {
+        font-size: var(--text-sm);
+    }
+
+    .label {
+        font-size: var(--text-xs);
+    }
+
+    .input,
+    .textarea,
+    .select {
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--text-sm);
+    }
+
+    .primaryButton,
+    .secondaryButton {
+        padding: var(--space-2) var(--space-4);
+        font-size: var(--text-sm);
     }
 }
 

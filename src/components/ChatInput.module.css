@@ -173,6 +173,12 @@
 @media (max-width: 768px) {
     .inputContainer {
         padding: var(--space-2) var(--space-3);
+        gap: var(--space-2);
+    }
+
+    .textarea {
+        font-size: 16px; /* Prevents iOS zoom on focus */
+        margin-bottom: 6px;
     }
 
     .sendButton {
@@ -180,7 +186,33 @@
         height: 36px;
     }
 
+    .sparkle {
+        display: none;
+    }
+
     .hint {
         display: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .inputContainer {
+        padding: var(--space-2);
+        border-radius: var(--radius-lg);
+    }
+
+    .sendButton {
+        width: 34px;
+        height: 34px;
+    }
+
+    .textarea {
+        min-height: 20px;
+        max-height: 120px;
+    }
+
+    .loader span {
+        width: 5px;
+        height: 5px;
     }
 }

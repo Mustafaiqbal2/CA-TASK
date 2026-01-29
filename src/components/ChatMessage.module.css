@@ -29,8 +29,8 @@
 
 /* Avatars */
 .avatar {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     border-radius: var(--radius-md);
     display: flex;
     align-items: center;
@@ -51,8 +51,8 @@
 
 /* Message Bubbles */
 .bubble {
-    max-width: 80%;
-    padding: var(--space-3) var(--space-4);
+    max-width: 85%;
+    padding: var(--space-3);
     border-radius: var(--radius-lg);
     position: relative;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -73,8 +73,8 @@
 
 /* Content Styling */
 .content {
-    font-size: var(--text-base);
-    line-height: 1.7;
+    font-size: var(--text-sm);
+    line-height: 1.6;
     color: var(--text-primary);
     word-wrap: break-word;
 }
@@ -171,13 +171,39 @@
 
 /* Responsive */
 @media (max-width: 768px) {
+    .messageWrapper {
+        gap: var(--space-2);
+    }
+
     .bubble {
         max-width: 90%;
+        padding: var(--space-2) var(--space-3);
     }
 
     .avatar {
-        width: 32px;
-        height: 32px;
+        width: 28px;
+        height: 28px;
+    }
+
+    .content {
+        font-size: var(--text-xs);
+        line-height: 1.5;
+    }
+
+    .content :global(pre) {
+        padding: var(--space-2);
+        font-size: 11px;
+    }
+}
+
+@media (max-width: 480px) {
+    .avatar {
+        width: 24px;
+        height: 24px;
+    }
+
+    .bubble {
+        max-width: 92%;
     }
 }
 
