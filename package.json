@@ -1,0 +1,27 @@
+{
+  "name": "research-ai",
+  "version": "1.0.0",
+  "description": "Multi-Step Form Builder Agent with Research Capabilities",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^3.0.16",
+    "@ai-sdk/react": "^0.0.70",
+    "@google/generative-ai": "^0.24.1",
+    "@mastra/core": "^1.0.4",
+    "@types/node": "^25.1.0",
+    "@types/react": "^19.2.10",
+    "ai": "^6.0.59",
+    "next": "^14.2.35",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.9.3",
+    "zod": "^3.25.76",
+    "zustand": "^5.0.10"
+  }
+}

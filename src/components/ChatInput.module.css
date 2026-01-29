@@ -1,0 +1,186 @@
+/* Chat Input Styles */
+
+.form {
+    width: 100%;
+}
+
+.inputWrapper {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.inputContainer {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-xl);
+    backdrop-filter: blur(20px);
+    transition: all var(--transition-base);
+}
+
+.inputContainer:focus-within {
+    border-color: var(--accent-purple);
+    box-shadow:
+        0 0 0 3px rgba(16, 185, 129, 0.1),
+        0 0 30px rgba(16, 185, 129, 0.1);
+}
+
+/* Gradient border effect on focus */
+.inputContainer::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: var(--accent-gradient);
+    opacity: 0;
+    z-index: -1;
+    transition: opacity var(--transition-base);
+}
+
+.inputContainer:focus-within::before {
+    opacity: 0.5;
+}
+
+/* Sparkle decoration */
+.sparkle {
+    color: var(--accent-purple);
+    opacity: 0.5;
+    flex-shrink: 0;
+    align-self: flex-end;
+    margin-bottom: 12px;
+    /* Align with button center (40px button - 16px icon = 24px / 2 = 12px) */
+}
+
+/* Textarea */
+.textarea {
+    flex: 1;
+    min-height: 24px;
+    max-height: 200px;
+    padding: 0;
+    margin-bottom: 8px;
+    /* Align single line with button center (40px button - 24px input = 16px / 2 = 8px) */
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.5;
+    resize: none;
+    outline: none;
+}
+
+.textarea::placeholder {
+    color: var(--text-muted);
+}
+
+.textarea:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Send Button */
+.sendButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-md);
+    background: var(--accent-gradient);
+    color: white;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all var(--transition-base);
+}
+
+.sendButton:hover:not(:disabled) {
+    transform: scale(1.05);
+    box-shadow: 0 4px 20px rgba(16, 185, 129, 0.4);
+}
+
+.sendButton:active:not(:disabled) {
+    transform: scale(0.98);
+}
+
+.sendButton:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Loading indicator */
+.loader {
+    display: flex;
+    gap: 4px;
+}
+
+.loader span {
+    width: 6px;
+    height: 6px;
+    background: white;
+    border-radius: 50%;
+    animation: bounce 1.4s ease-in-out infinite;
+}
+
+.loader span:nth-child(1) {
+    animation-delay: 0s;
+}
+
+.loader span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.loader span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes bounce {
+
+    0%,
+    60%,
+    100% {
+        transform: translateY(0);
+    }
+
+    30% {
+        transform: translateY(-4px);
+    }
+}
+
+/* Keyboard hint */
+.hint {
+    text-align: center;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+
+.hint kbd {
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .inputContainer {
+        padding: var(--space-2) var(--space-3);
+    }
+
+    .sendButton {
+        width: 36px;
+        height: 36px;
+    }
+
+    .hint {
+        display: none;
+    }
+}
