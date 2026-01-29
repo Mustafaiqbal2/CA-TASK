@@ -6,9 +6,9 @@ import { dataSynthesisTool } from '../tools/data-synthesis';
 import { locationContextTool } from '../tools/location-context';
 
 export const researchAgent = new Agent({
-    id: 'research-agent',
-    name: 'research-agent',
-    instructions: `
+   id: 'research-agent',
+   name: 'research-agent',
+   instructions: `
       You are an expert Research Agent. Your goal is to conduct comprehensive research based on user requirements found in a submitted form.
 
       ## Research Process (Agentic Loop)
@@ -54,10 +54,10 @@ export const researchAgent = new Agent({
       - Cite sources for every major claim.
       - Use the user's local context (currency, regulations, availability) where applicable.
   `,
-    model: google('gemini-2.5-flash'),
-    tools: {
-        webSearch: webSearchTool,
-        dataSynthesis: dataSynthesisTool,
-        locationContext: locationContextTool,
-    },
+   model: google('gemini-2.5-flash-lite'),
+   tools: {
+      webSearch: webSearchTool,
+      dataSynthesis: dataSynthesisTool,
+      locationContext: locationContextTool,
+   },
 });

@@ -87,7 +87,7 @@ export const formBuilderAgent = new Agent({
    id: 'form-builder-agent',
    name: 'Form Builder Agent',
    instructions: FORM_BUILDER_SYSTEM_PROMPT,
-   model: google('gemini-2.5-flash'),
+   model: google('gemini-2.5-flash-lite'),
    tools: {
       formGenerator: formGeneratorTool,
    },

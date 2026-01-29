@@ -61,11 +61,15 @@ export default function AppPage() {
     // Handle form schema processing and state transition
     const handleViewForm = useCallback((parsed: any) => {
         if (parsed.action === 'generate_form' && parsed.form) {
+            // Process interview context
+            const interviewContext = parsed.form.interviewContext || {};
+
             const formSchema = {
                 id: `form_${Date.now()}`,
                 title: parsed.form.title,
                 description: parsed.form.description,
                 researchTopic: parsed.form.researchTopic,
+                interviewContext: interviewContext,
                 fields: parsed.form.fields.map((field: {
                     id: string;
                     type: string;
@@ -77,6 +81,10 @@ export default function AppPage() {
                         dependsOnField: string;
                         condition: string;
                         value: string;
+                    };
+                    prefilledFromInterview?: {
+                        value: string | number | boolean | string[];
+                        source: string;
                     };
                 }, index: number) => ({
                     id: field.id,
@@ -98,11 +106,38 @@ export default function AppPage() {
                         }],
                     } : undefined,
                     dependsOn: field.showOnlyIf ? [field.showOnlyIf.dependsOnField] : undefined,
+                    // Pass through pre-filled context
+                    prefilledFromInterview: field.prefilledFromInterview,
+                    // Set default value from pre-filled interview data
+                    defaultValue: field.prefilledFromInterview?.value,
                 })),
                 createdAt: new Date(),
             };
 
             setFormSchema(formSchema);
+
+            // Also pre-populate form data with interview context values
+            const prefilledData: Record<string, any> = {};
+
+            // Add values from fields with prefilledFromInterview
+            formSchema.fields.forEach((field: any) => {
+                if (field.prefilledFromInterview?.value !== undefined) {
+                    prefilledData[field.id] = field.prefilledFromInterview.value;
+                }
+            });
+
+            // Add values from interviewContext (these might not have corresponding fields)
+            Object.entries(interviewContext).forEach(([key, ctx]: [string, any]) => {
+                if (ctx.value !== undefined) {
+                    prefilledData[key] = ctx.value;
+                }
+            });
+
+            // Pre-populate the form data store with gathered context
+            if (Object.keys(prefilledData).length > 0) {
+                useAppStore.getState().setFormData(prefilledData);
+            }
+
             transition('FORM_PREVIEW', 'view_form');
         }
     }, [setFormSchema, transition]);

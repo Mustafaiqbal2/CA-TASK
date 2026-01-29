@@ -38,8 +38,25 @@ type FormValues = Record<string, string | string[] | number | boolean>;
 type FormErrors = Record<string, string>;
 
 export function FormActive({ formSchema }: FormActiveProps) {
-    const { transition, setFormData } = useAppStore();
-    const [values, setValues] = useState<FormValues>({});
+    const { transition, setFormData, formData: storedFormData } = useAppStore();
+
+    // Initialize with pre-filled data from interview
+    const [values, setValues] = useState<FormValues>(() => {
+        const initial: FormValues = {};
+        // Start with stored form data (includes interview context)
+        Object.entries(storedFormData).forEach(([key, val]) => {
+            if (val !== undefined) {
+                initial[key] = val as FormValues[string];
+            }
+        });
+        // Also apply default values from fields
+        formSchema.fields.forEach(field => {
+            if (field.defaultValue !== undefined && initial[field.id] === undefined) {
+                initial[field.id] = field.defaultValue as FormValues[string];
+            }
+        });
+        return initial;
+    });
     const [errors, setErrors] = useState<FormErrors>({});
     const [currentStep, setCurrentStep] = useState(0);
     const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -211,6 +228,30 @@ export function FormActive({ formSchema }: FormActiveProps) {
                     </div>
                 )}
 
+                {/* Interview Context Summary (if any) */}
+                {formSchema.interviewContext && Object.keys(formSchema.interviewContext).length > 0 && (
+                    <div className={styles.interviewContext}>
+                        <div className={styles.interviewContextHeader}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <circle cx="12" cy="12" r="10" />
+                                <path d="M12 16v-4" />
+                                <path d="M12 8h.01" />
+                            </svg>
+                            <span>Information gathered from interview</span>
+                        </div>
+                        <div className={styles.interviewContextItems}>
+                            {Object.entries(formSchema.interviewContext).map(([key, ctx]) => (
+                                <div key={key} className={styles.interviewContextItem}>
+                                    <span className={styles.contextKey}>{key.replace(/_/g, ' ')}:</span>
+                                    <span className={styles.contextValue}>
+                                        {Array.isArray(ctx.value) ? ctx.value.join(', ') : String(ctx.value)}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* Form Fields */}
                 <div className={styles.formContainer}>
                     {currentFields.map((field, index) => (
@@ -222,6 +263,7 @@ export function FormActive({ formSchema }: FormActiveProps) {
                             onChange={(value) => handleChange(field.id, value)}
                             onBlur={() => handleBlur(field.id)}
                             index={index}
+                            isPrefilled={!!field.prefilledFromInterview}
                         />
                     ))}
                 </div>
@@ -270,9 +312,10 @@ interface FormFieldInputProps {
     onChange: (value: FormValues[string]) => void;
     onBlur: () => void;
     index: number;
+    isPrefilled?: boolean;
 }
 
-function FormFieldInput({ field, value, error, onChange, onBlur, index }: FormFieldInputProps) {
+function FormFieldInput({ field, value, error, onChange, onBlur, index, isPrefilled }: FormFieldInputProps) {
     const animationDelay = `${index * 0.05}s`;
 
     const renderInput = () => {
@@ -405,15 +448,28 @@ function FormFieldInput({ field, value, error, onChange, onBlur, index }: FormFi
 
     return (
         <div
-            className={styles.fieldWrapper}
+            className={`${styles.fieldWrapper} ${isPrefilled ? styles.prefilledField : ''}`}
             style={{ animationDelay }}
         >
             <label className={styles.label}>
                 {field.label}
                 {field.required && <span className={styles.required}>*</span>}
+                {isPrefilled && (
+                    <span className={styles.prefilledBadge} title={field.prefilledFromInterview?.source}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                        </svg>
+                        From interview
+                    </span>
+                )}
             </label>
             {field.helpText && (
                 <p className={styles.helpText}>{field.helpText}</p>
+            )}
+            {isPrefilled && field.prefilledFromInterview?.source && (
+                <p className={styles.prefilledSource}>
+                    💬 {field.prefilledFromInterview.source}
+                </p>
             )}
             {renderInput()}
             {error && (

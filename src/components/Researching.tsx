@@ -35,6 +35,12 @@ export function Researching() {
     const [elapsedTime, setElapsedTime] = useState(0);
     const requestStarted = useRef(false);
     const [logs, setLogs] = useState<string[]>([]);
+    const logsEndRef = useRef<HTMLDivElement>(null);
+
+    // Auto-scroll logs when new entries are added
+    useEffect(() => {
+        logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [logs]);
 
     // Call research API
     useEffect(() => {
@@ -138,23 +144,83 @@ export function Researching() {
                 // We look for the last valid JSON object that looks like a report.
 
                 try {
-                    // Quick and dirty extraction of the largest JSON block or just parsing the whole thing if pure
-                    // If the model followed instructions perfectly, finalJson IS the JSON.
-                    // But usually there's some text before/after or markdown ```json ... ```
+                    // Robust JSON extraction - the AI might return:
+                    // 1. Multiple JSON blocks (sometimes duplicated)
+                    // 2. Malformed markdown (e.g., ``````json instead of ``` followed by ```json)
+                    // 3. Text before/after the JSON
 
-                    let cleanJson = finalJson;
-                    const jsonBlock = finalJson.match(/```json\n([\s\S]*?)```/);
-                    if (jsonBlock) {
-                        cleanJson = jsonBlock[1];
-                    } else {
-                        const firstBrace = finalJson.indexOf('{');
-                        const lastBrace = finalJson.lastIndexOf('}');
-                        if (firstBrace !== -1 && lastBrace !== -1) {
-                            cleanJson = finalJson.substring(firstBrace, lastBrace + 1);
+                    let result = null;
+
+                    // Strategy 1: Extract all ```json ... ``` blocks and try to parse each
+                    // Use a global regex to find all potential JSON blocks
+                    const jsonBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)```/g;
+                    const blocks: string[] = [];
+                    let match;
+                    while ((match = jsonBlockRegex.exec(finalJson)) !== null) {
+                        if (match[1] && match[1].trim()) {
+                            blocks.push(match[1].trim());
                         }
                     }
 
-                    const result = JSON.parse(cleanJson);
+                    // Try each block, preferring ones that look like valid reports
+                    for (const block of blocks) {
+                        try {
+                            const parsed = JSON.parse(block);
+                            if (parsed && (parsed.title || parsed.summary)) {
+                                result = parsed;
+                                break; // Use the first valid report
+                            }
+                        } catch {
+                            // Not valid JSON, continue
+                        }
+                    }
+
+                    // Strategy 2: If no blocks worked, try to find JSON object by braces
+                    if (!result) {
+                        // Find the last complete JSON object (balancing braces)
+                        let braceCount = 0;
+                        let jsonStart = -1;
+                        let jsonEnd = -1;
+
+                        for (let i = finalJson.length - 1; i >= 0; i--) {
+                            if (finalJson[i] === '}') {
+                                if (braceCount === 0) jsonEnd = i;
+                                braceCount++;
+                            } else if (finalJson[i] === '{') {
+                                braceCount--;
+                                if (braceCount === 0) {
+                                    jsonStart = i;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (jsonStart !== -1 && jsonEnd !== -1) {
+                            const candidate = finalJson.substring(jsonStart, jsonEnd + 1);
+                            try {
+                                const parsed = JSON.parse(candidate);
+                                if (parsed && (parsed.title || parsed.summary)) {
+                                    result = parsed;
+                                }
+                            } catch {
+                                // Try simpler extraction
+                            }
+                        }
+                    }
+
+                    // Strategy 3: Simple first-to-last brace extraction
+                    if (!result) {
+                        const firstBrace = finalJson.indexOf('{');
+                        const lastBrace = finalJson.lastIndexOf('}');
+                        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                            const candidate = finalJson.substring(firstBrace, lastBrace + 1);
+                            result = JSON.parse(candidate);
+                        }
+                    }
+
+                    if (!result) {
+                        throw new Error('Could not extract valid JSON from response');
+                    }
 
                     // Validate it has fields we need
                     if (result.title || result.summary) {
@@ -237,6 +303,7 @@ export function Researching() {
                             {logs.map((log, i) => (
                                 <div key={i} className={styles.logEntry}>{log}</div>
                             ))}
+                            <div ref={logsEndRef} />
                         </div>
                     </div>
                 </div>

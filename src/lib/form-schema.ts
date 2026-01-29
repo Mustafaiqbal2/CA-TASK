@@ -89,6 +89,13 @@ export interface FormField {
     // Value handling
     defaultValue?: string | number | boolean | string[];
 
+    // Pre-filled from interview - if set, this value was captured during the interview
+    // and the field can be hidden or shown as read-only
+    prefilledFromInterview?: {
+        value: string | number | boolean | string[];
+        source: string; // Description of where this came from in the interview
+    };
+
     // Validation
     required: boolean;
     validationRules?: ValidationRule[];
@@ -120,6 +127,16 @@ export interface FormGroup {
 }
 
 /**
+ * Interview context - information gathered during the chat interview
+ */
+export interface InterviewContext {
+    [key: string]: {
+        value: string | number | boolean | string[];
+        source: string; // The user's message or context where this was mentioned
+    };
+}
+
+/**
  * Complete form schema
  */
 export interface FormSchema {
@@ -132,6 +149,9 @@ export interface FormSchema {
 
     // Optional grouping
     groups?: FormGroup[];
+
+    // Context gathered during interview (pre-filled values)
+    interviewContext?: InterviewContext;
 
     // Metadata
     createdAt: Date;
