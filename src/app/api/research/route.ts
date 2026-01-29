@@ -63,16 +63,51 @@ export async function POST(req: Request) {
                     controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(initMsg)}\n`));
                     console.log('[11] Init message sent to client');
 
-                    // Build prompt
+                    // Build prompt with explicit user requirements
+                    // Parse form data to extract key criteria
+                    const requirements: string[] = [];
+                    for (const [key, value] of Object.entries(formData)) {
+                        if (value && key !== 'title' && key !== 'description') {
+                            // Format the field name nicely
+                            const fieldName = key.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim();
+                            if (Array.isArray(value)) {
+                                requirements.push(`- ${fieldName}: ${value.join(', ')}`);
+                            } else if (typeof value === 'boolean') {
+                                requirements.push(`- ${fieldName}: ${value ? 'Yes' : 'No'}`);
+                            } else {
+                                requirements.push(`- ${fieldName}: ${value}`);
+                            }
+                        }
+                    }
+                    
                     const userPrompt = `
-                        Conduct research for the following request:
-                        
-                        Session Location Context: ${JSON.stringify(location)}
-                        
-                        Form Title: ${formData.title || 'Research Request'}
-                        Form Data: ${JSON.stringify(formData)}
-                        
-                        Please execute the research plan, gather data, and provide the final JSON report.
+## Research Request
+
+**Topic**: ${formData.title || formData.researchTopic || 'General Research'}
+
+**User Location**: ${location?.city || 'Unknown'}, ${location?.country || 'Global'} (use this for regional context, pricing, and availability)
+
+## CRITICAL USER REQUIREMENTS
+The user has specified the following criteria that MUST be addressed in your research:
+
+${requirements.length > 0 ? requirements.join('\n') : 'No specific requirements provided'}
+
+## Your Task
+1. **PRIORITIZE** finding options/products/services that MATCH the user's specific requirements listed above
+2. Search for solutions that explicitly satisfy each criterion
+3. Compare options based on HOW WELL they meet the stated requirements
+4. In your recommendations, explain WHY each suggestion fits the user's criteria
+5. If a popular option does NOT meet the user's requirements, mention it but clearly state why it doesn't fit
+
+## Important
+- Do NOT provide a generic overview of the topic
+- DO find and compare specific options that match the user's stated needs
+- EACH recommendation should reference back to the user's requirements
+- Include pricing that is relevant to the user's location (${location?.country || 'their region'})
+
+Form Data (raw): ${JSON.stringify(formData)}
+
+Execute the research plan and provide the final JSON report.
                     `;
                     console.log('[12] User prompt built, length:', userPrompt.length);
 

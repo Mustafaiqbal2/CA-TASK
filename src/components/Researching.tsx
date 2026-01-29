@@ -7,21 +7,22 @@ import styles from './Researching.module.css';
 
 // Icons
 const SearchIcon = () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={styles.pulseIcon}>
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <circle cx="11" cy="11" r="8" />
         <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
 );
 
 const BrainIcon = () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={styles.pulseIcon}>
-        <path d="M9.5 2h5a2.5 2.5 0 0 1 2.25 1.5l1.5 3.5m-11 5h11m-11 5h11m-5 5h5a2.5 2.5 0 0 0 2.25-1.5l1.5-3.5" />
-        <path d="M2.5 12h19" />
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M12 2a4 4 0 0 1 4 4c0 1.1-.4 2.1-1.1 2.9l-.9.9c.6.4 1 1.1 1 1.9V14a4 4 0 0 1-6 3.5A4 4 0 0 1 3 14v-2.3c0-.8.4-1.5 1-1.9l-.9-.9A4 4 0 0 1 8 2h4z" />
+        <path d="M7 11v2a2 2 0 0 0 4 0v-2" />
+        <path d="M13 11v2a2 2 0 0 0 4 0v-2" />
     </svg>
 );
 
 const DocIcon = () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={styles.pulseIcon}>
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
         <polyline points="14 2 14 8 20 8" />
         <line x1="16" y1="13" x2="8" y2="13" />
@@ -29,6 +30,62 @@ const DocIcon = () => (
         <polyline points="10 9 9 9 8 9" />
     </svg>
 );
+
+const SparkleIcon = () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z" />
+    </svg>
+);
+
+// Floating particles for background effect
+const FloatingParticles = () => {
+    return (
+        <div className={styles.particles}>
+            {[...Array(20)].map((_, i) => (
+                <div
+                    key={i}
+                    className={styles.particle}
+                    style={{
+                        '--delay': `${Math.random() * 5}s`,
+                        '--duration': `${10 + Math.random() * 10}s`,
+                        '--x-start': `${Math.random() * 100}%`,
+                        '--x-end': `${Math.random() * 100}%`,
+                        '--size': `${2 + Math.random() * 4}px`,
+                    } as React.CSSProperties}
+                />
+            ))}
+        </div>
+    );
+};
+
+// Neural network animation
+const NeuralNetwork = () => {
+    return (
+        <div className={styles.neuralNetwork}>
+            {[...Array(8)].map((_, i) => (
+                <div
+                    key={i}
+                    className={styles.neuralNode}
+                    style={{
+                        '--node-delay': `${i * 0.3}s`,
+                        '--node-x': `${20 + (i % 4) * 20}%`,
+                        '--node-y': `${30 + Math.floor(i / 4) * 40}%`,
+                    } as React.CSSProperties}
+                />
+            ))}
+            {[...Array(6)].map((_, i) => (
+                <div
+                    key={`line-${i}`}
+                    className={styles.neuralLine}
+                    style={{
+                        '--line-delay': `${i * 0.4}s`,
+                        '--rotation': `${i * 30}deg`,
+                    } as React.CSSProperties}
+                />
+            ))}
+        </div>
+    );
+};
 
 export function Researching() {
     const { location, formData, researchStatus, researchProgress, setResearchProgress, setResearchResults, transition, formSchema } = useAppStore();
@@ -300,59 +357,109 @@ export function Researching() {
 
     return (
         <div className={styles.container}>
+            {/* Animated background elements */}
+            <FloatingParticles />
+            <NeuralNetwork />
+            
+            {/* Aurora gradient background */}
+            <div className={styles.aurora}>
+                <div className={styles.auroraBlob1} />
+                <div className={styles.auroraBlob2} />
+                <div className={styles.auroraBlob3} />
+            </div>
+
             <div className={styles.content}>
-                <div className={styles.iconWrapper}>
-                    {researchProgress < 30 ? <SearchIcon /> :
-                        researchProgress < 60 ? <BrainIcon /> : <DocIcon />}
+                {/* Glowing ring around icon */}
+                <div className={styles.iconContainer}>
+                    <div className={styles.iconRing} />
+                    <div className={styles.iconRingOuter} />
+                    <div className={styles.iconWrapper}>
+                        {researchProgress < 30 ? <SearchIcon /> :
+                            researchProgress < 60 ? <BrainIcon /> : <DocIcon />}
+                    </div>
                 </div>
 
                 <div className={styles.statusWrapper}>
-                    <h2 className={styles.statusText}>{researchStatus || 'Initializing research...'}</h2>
+                    <h2 className={styles.statusText}>
+                        <span className={styles.sparkle}><SparkleIcon /></span>
+                        {researchStatus || 'Initializing research...'}
+                    </h2>
                     <p className={styles.topicText}>{formSchema?.researchTopic}</p>
                 </div>
 
                 <div className={styles.progressContainer}>
+                    {/* Enhanced progress bar */}
                     <div className={styles.progressBar}>
                         <div
                             className={styles.progressFill}
                             style={{ width: `${researchProgress}%` }}
-                        />
+                        >
+                            <div className={styles.progressShine} />
+                        </div>
+                        <div className={styles.progressGlow} style={{ left: `${researchProgress}%` }} />
                     </div>
                     <div className={styles.metaInfo}>
-                        <span>{Math.round(researchProgress)}% Complete</span>
-                        <span>{formatTime(elapsedTime)}</span>
+                        <span className={styles.progressPercent}>{Math.round(researchProgress)}%</span>
+                        <span className={styles.timer}>
+                            <span className={styles.timerDot} />
+                            {formatTime(elapsedTime)}
+                        </span>
                     </div>
 
                     {/* Activity Log */}
                     <div className={styles.logsContainer}>
-                        <div className={styles.logsHeader}>Activity Log</div>
+                        <div className={styles.logsHeader}>
+                            <span className={styles.logsIcon}>📡</span>
+                            Agent Activity
+                            <span className={styles.liveBadge}>LIVE</span>
+                        </div>
                         <div className={styles.logsContent}>
-                            {logs.length === 0 && <span className={styles.logPlaceholder}>Waiting for agent activity...</span>}
+                            {logs.length === 0 && <span className={styles.logPlaceholder}>Initializing agent systems...</span>}
                             {logs.map((log, i) => (
-                                <div key={i} className={styles.logEntry}>{log}</div>
+                                <div key={i} className={styles.logEntry}>
+                                    <span className={styles.logArrow}>→</span>
+                                    {log}
+                                </div>
                             ))}
                             <div ref={logsEndRef} />
                         </div>
                     </div>
                 </div>
 
-                {/* Steps visualization */}
+                {/* Enhanced steps visualization */}
                 <div className={styles.steps}>
-                    <div className={`${styles.step} ${researchProgress >= 5 ? styles.active : ''}`}>
-                        <div className={styles.stepDot} />
-                        <span>Planning</span>
+                    <div className={`${styles.step} ${researchProgress >= 5 ? styles.active : ''} ${researchProgress >= 30 ? styles.completed : ''}`}>
+                        <div className={styles.stepIconWrapper}>
+                            <span className={styles.stepIcon}>🎯</span>
+                        </div>
+                        <span className={styles.stepLabel}>Planning</span>
                     </div>
-                    <div className={`${styles.step} ${researchProgress >= 30 ? styles.active : ''}`}>
-                        <div className={styles.stepDot} />
-                        <span>Searching</span>
+                    <div className={styles.stepConnector}>
+                        <div className={`${styles.connectorFill} ${researchProgress >= 30 ? styles.filled : ''}`} />
                     </div>
-                    <div className={`${styles.step} ${researchProgress >= 60 ? styles.active : ''}`}>
-                        <div className={styles.stepDot} />
-                        <span>Analyzing</span>
+                    <div className={`${styles.step} ${researchProgress >= 30 ? styles.active : ''} ${researchProgress >= 60 ? styles.completed : ''}`}>
+                        <div className={styles.stepIconWrapper}>
+                            <span className={styles.stepIcon}>🔍</span>
+                        </div>
+                        <span className={styles.stepLabel}>Searching</span>
                     </div>
-                    <div className={`${styles.step} ${researchProgress >= 90 ? styles.active : ''}`}>
-                        <div className={styles.stepDot} />
-                        <span>Synthesizing</span>
+                    <div className={styles.stepConnector}>
+                        <div className={`${styles.connectorFill} ${researchProgress >= 60 ? styles.filled : ''}`} />
+                    </div>
+                    <div className={`${styles.step} ${researchProgress >= 60 ? styles.active : ''} ${researchProgress >= 90 ? styles.completed : ''}`}>
+                        <div className={styles.stepIconWrapper}>
+                            <span className={styles.stepIcon}>🧠</span>
+                        </div>
+                        <span className={styles.stepLabel}>Analyzing</span>
+                    </div>
+                    <div className={styles.stepConnector}>
+                        <div className={`${styles.connectorFill} ${researchProgress >= 90 ? styles.filled : ''}`} />
+                    </div>
+                    <div className={`${styles.step} ${researchProgress >= 90 ? styles.active : ''} ${researchProgress >= 100 ? styles.completed : ''}`}>
+                        <div className={styles.stepIconWrapper}>
+                            <span className={styles.stepIcon}>✨</span>
+                        </div>
+                        <span className={styles.stepLabel}>Synthesizing</span>
                     </div>
                 </div>
 
@@ -360,7 +467,7 @@ export function Researching() {
                     className={styles.cancelButton}
                     onClick={() => transition('FORM_ACTIVE', 'research_cancelled')}
                 >
-                    Cancel Research
+                    <span>Cancel Research</span>
                 </button>
             </div>
         </div>

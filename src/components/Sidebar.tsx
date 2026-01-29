@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAppStore, ChatSession } from '@/lib/state-machine';
+import { ConfirmModal } from '@/components/ConfirmModal';
 import styles from './Sidebar.module.css';
 
 // Icons
@@ -121,6 +122,9 @@ export function Sidebar() {
         deleteSession,
         toggleSidebar 
     } = useAppStore();
+    
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
 
     const handleNewChat = () => {
         createNewSession();
@@ -138,10 +142,22 @@ export function Sidebar() {
         }
     };
 
-    const handleDeleteSession = (sessionId: string) => {
-        if (confirm('Delete this chat? This cannot be undone.')) {
-            deleteSession(sessionId);
+    const handleDeleteClick = (sessionId: string) => {
+        setSessionToDelete(sessionId);
+        setDeleteModalOpen(true);
+    };
+
+    const handleConfirmDelete = () => {
+        if (sessionToDelete) {
+            deleteSession(sessionToDelete);
         }
+        setDeleteModalOpen(false);
+        setSessionToDelete(null);
+    };
+
+    const handleCancelDelete = () => {
+        setDeleteModalOpen(false);
+        setSessionToDelete(null);
     };
 
     // Group sessions by date
@@ -190,7 +206,7 @@ export function Sidebar() {
                                     session={session}
                                     isActive={session.id === currentSessionId}
                                     onSelect={() => handleSelectSession(session.id)}
-                                    onDelete={() => handleDeleteSession(session.id)}
+                                    onDelete={() => handleDeleteClick(session.id)}
                                 />
                             ))}
                         </div>
@@ -211,6 +227,18 @@ export function Sidebar() {
                     </span>
                 </div>
             </aside>
+            
+            {/* Delete Confirmation Modal */}
+            <ConfirmModal
+                isOpen={deleteModalOpen}
+                title="Delete Research"
+                message="Are you sure you want to delete this research? This action cannot be undone."
+                confirmText="Delete"
+                cancelText="Cancel"
+                variant="danger"
+                onConfirm={handleConfirmDelete}
+                onCancel={handleCancelDelete}
+            />
         </>
     );
 }

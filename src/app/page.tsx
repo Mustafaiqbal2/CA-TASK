@@ -152,6 +152,16 @@ export default function HomePage() {
                 <div className={styles.gradientOrb2} />
                 <div className={styles.gradientOrb3} />
                 <div className={styles.gridOverlay} />
+                {/* Floating particles */}
+                <div className={styles.particles}>
+                    {[...Array(20)].map((_, i) => (
+                        <div key={i} className={styles.particle} style={{
+                            '--delay': `${i * 0.5}s`,
+                            '--x': `${Math.random() * 100}%`,
+                            '--duration': `${15 + Math.random() * 20}s`,
+                        } as React.CSSProperties} />
+                    ))}
+                </div>
             </div>
 
             {/* Navigation */}

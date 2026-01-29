@@ -8,6 +8,7 @@ import { ChatMessage } from '@/components/ChatMessage';
 import { FormPreview } from '@/components/FormPreview';
 import { FormActive } from '@/components/FormActive';
 import { Sidebar } from '@/components/Sidebar';
+import { LocationBanner } from '@/components/LocationBanner';
 
 import { Researching } from '@/components/Researching';
 import { ResearchResults } from '@/components/ResearchResults';
@@ -45,6 +46,32 @@ const SendIcon = () => (
     </svg>
 );
 
+// Scroll icons
+const ChevronUpIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M18 15l-6-6-6 6" />
+    </svg>
+);
+
+const ChevronDownIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M6 9l6 6 6-6" />
+    </svg>
+);
+
+const PauseIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="6" y="4" width="4" height="16" />
+        <rect x="14" y="4" width="4" height="16" />
+    </svg>
+);
+
+const PlayIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <polygon points="5 3 19 12 5 21 5 3" />
+    </svg>
+);
+
 // Helper to convert stored chat messages to AI SDK format
 function convertStoredMessagesToAiFormat(storedMessages: Array<{ id: string; role: 'user' | 'assistant'; content: string; timestamp: Date }>): Message[] {
     return storedMessages.map(msg => ({
@@ -57,6 +84,7 @@ function convertStoredMessagesToAiFormat(storedMessages: Array<{ id: string; rol
 
 export default function AppPage() {
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const messagesContainerRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const formRef = useRef<HTMLFormElement>(null);
     const { 
@@ -78,6 +106,12 @@ export default function AppPage() {
     const [isHydrated, setIsHydrated] = useState(false);
     const lastSyncedMessageCount = useRef(0);
     const lastSessionId = useRef<string | null>(null);
+    
+    // Scroll control state
+    const [autoScroll, setAutoScroll] = useState(true);
+    const [showScrollTop, setShowScrollTop] = useState(false);
+    const [showScrollBottom, setShowScrollBottom] = useState(false);
+    const userScrolledRef = useRef(false);
 
     // Convert stored messages to AI SDK format for initial messages
     const initialMessages = convertStoredMessagesToAiFormat(chatMessages);
@@ -90,6 +124,9 @@ export default function AppPage() {
             checkForFormGeneration(message.content);
             // Save session after each assistant message
             saveCurrentSession();
+            // Re-enable auto-scroll after response completes
+            setAutoScroll(true);
+            userScrolledRef.current = false;
         },
         onError: (err) => {
             console.error('Chat error:', err);
@@ -275,10 +312,67 @@ export default function AppPage() {
         }
     }, [handleViewForm]);
 
-    // Scroll to bottom when new messages arrive
+    // Handle scroll events to show/hide scroll buttons
+    const handleScroll = useCallback(() => {
+        const container = messagesContainerRef.current;
+        if (!container) return;
+
+        const { scrollTop, scrollHeight, clientHeight } = container;
+        const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
+        const isAtTop = scrollTop < 100;
+
+        setShowScrollTop(!isAtTop && scrollTop > 200);
+        setShowScrollBottom(!isAtBottom && scrollHeight > clientHeight);
+
+        // If user manually scrolls up while loading, disable auto-scroll
+        if (isLoading && !isAtBottom) {
+            userScrolledRef.current = true;
+            setAutoScroll(false);
+        }
+    }, [isLoading]);
+
+    // Scroll to bottom when new messages arrive (only if auto-scroll is enabled)
     useEffect(() => {
+        if (autoScroll && !userScrolledRef.current) {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [messages, autoScroll]);
+
+    // Continuous scroll during streaming - this is crucial for real-time scrolling
+    useEffect(() => {
+        if (!isLoading || !autoScroll || userScrolledRef.current) return;
+        
+        // Create an interval to scroll during streaming
+        const scrollInterval = setInterval(() => {
+            if (autoScroll && !userScrolledRef.current) {
+                const container = messagesContainerRef.current;
+                if (container) {
+                    container.scrollTop = container.scrollHeight;
+                }
+            }
+        }, 100); // Scroll every 100ms during streaming
+
+        return () => clearInterval(scrollInterval);
+    }, [isLoading, autoScroll]);
+
+    // Scroll handlers
+    const scrollToTop = () => {
+        messagesContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
+        setAutoScroll(true);
+        userScrolledRef.current = false;
+    };
+
+    const toggleAutoScroll = () => {
+        setAutoScroll(!autoScroll);
+        if (!autoScroll) {
+            userScrolledRef.current = false;
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
+    };
 
     // Auto-resize textarea
     useEffect(() => {
@@ -374,6 +468,9 @@ export default function AppPage() {
             <Sidebar />
             
             <div className={styles.container}>
+                {/* Location Banner */}
+                <LocationBanner />
+                
                 {/* Header */}
                 <header className={styles.header}>
                     <div className={styles.headerContent}>
@@ -403,7 +500,11 @@ export default function AppPage() {
 
                 {/* Chat Area */}
                 <main className={styles.chatArea}>
-                    <div className={styles.messagesContainer}>
+                    <div 
+                        ref={messagesContainerRef}
+                        className={styles.messagesContainer}
+                        onScroll={handleScroll}
+                    >
                         {/* Welcome message if no messages yet */}
                         {messages.length === 0 && (
                             <div className={styles.welcome}>
@@ -472,6 +573,39 @@ export default function AppPage() {
 
                     <div ref={messagesEndRef} />
                 </div>
+
+                {/* Scroll Controls */}
+                {messages.length > 0 && (
+                    <div className={styles.scrollControls}>
+                        {showScrollTop && (
+                            <button 
+                                className={styles.scrollButton} 
+                                onClick={scrollToTop}
+                                title="Scroll to top"
+                            >
+                                <ChevronUpIcon />
+                            </button>
+                        )}
+                        {isLoading && (
+                            <button 
+                                className={`${styles.scrollButton} ${styles.autoScrollButton} ${autoScroll ? styles.active : ''}`}
+                                onClick={toggleAutoScroll}
+                                title={autoScroll ? "Auto-scroll ON (click to pause)" : "Auto-scroll OFF (click to resume)"}
+                            >
+                                {autoScroll ? <PauseIcon /> : <PlayIcon />}
+                            </button>
+                        )}
+                        {(showScrollBottom || !autoScroll) && (
+                            <button 
+                                className={styles.scrollButton} 
+                                onClick={scrollToBottom}
+                                title="Scroll to bottom"
+                            >
+                                <ChevronDownIcon />
+                            </button>
+                        )}
+                    </div>
+                )}
             </main>
 
             {/* Input Area */}

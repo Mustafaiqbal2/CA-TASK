@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useAppStore } from '@/lib/state-machine';
 import { generatePDF } from '@/lib/pdf-export';
+import { useToast } from '@/components/Toast';
 import styles from './ResearchResults.module.css';
 
 // Icons
@@ -19,6 +20,12 @@ const CopyIcon = () => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+);
+
+const CopiedIcon = () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <polyline points="20 6 9 17 4 12" />
     </svg>
 );
 
@@ -86,7 +93,9 @@ function renderFormattedText(text: string) {
 
 export function ResearchResults() {
     const { researchResults, reset } = useAppStore();
+    const { addToast } = useToast();
     const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+    const [isCopied, setIsCopied] = useState(false);
 
     if (!researchResults) {
         return null;
@@ -99,15 +108,16 @@ export function ResearchResults() {
         setIsGeneratingPDF(true);
         try {
             await generatePDF(researchResults);
+            addToast('success', 'PDF downloaded successfully!');
         } catch (error) {
             console.error('Failed to generate PDF:', error);
-            alert('Failed to generate PDF. Please try again.');
+            addToast('error', 'Failed to generate PDF. Please try again.');
         } finally {
             setIsGeneratingPDF(false);
         }
     };
 
-    const handleCopy = () => {
+    const handleCopy = async () => {
         let text = `${title}\n\n${summary}`;
         if (overview) text += `\n\nOverview:\n${overview}`;
         text += `\n\nKey Findings:\n${keyFindings.map((f, i) => `${i + 1}. ${f}`).join('\n')}`;
@@ -123,8 +133,15 @@ export function ResearchResults() {
         }
         if (recommendations) text += `\n\nRecommendations:\n${recommendations}`;
         text += `\n\nSources:\n${sources.map(s => `- ${s.title}: ${s.url}`).join('\n')}`;
-        navigator.clipboard.writeText(text);
-        alert('Copied to clipboard!');
+        
+        try {
+            await navigator.clipboard.writeText(text);
+            setIsCopied(true);
+            addToast('success', 'Report copied to clipboard!');
+            setTimeout(() => setIsCopied(false), 2000);
+        } catch (error) {
+            addToast('error', 'Failed to copy to clipboard');
+        }
     };
 
     return (
@@ -140,8 +157,12 @@ export function ResearchResults() {
                         </div>
                     </div>
                     <div className={styles.actions}>
-                        <button onClick={handleCopy} className={styles.iconButton} title="Copy text">
-                            <CopyIcon />
+                        <button 
+                            onClick={handleCopy} 
+                            className={`${styles.iconButton} ${isCopied ? styles.copied : ''}`} 
+                            title={isCopied ? "Copied!" : "Copy text"}
+                        >
+                            {isCopied ? <CopiedIcon /> : <CopyIcon />}
                         </button>
                         <button 
                             onClick={handleDownloadPDF} 

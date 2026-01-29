@@ -110,6 +110,17 @@
     pointer-events: none;
 }
 
+.iconButton.copied {
+    background: rgba(16, 185, 129, 0.2);
+    border-color: rgba(16, 185, 129, 0.4);
+    color: #10b981;
+}
+
+.iconButton.copied:hover {
+    background: rgba(16, 185, 129, 0.3);
+    color: #10b981;
+}
+
 .spinner {
     width: 16px;
     height: 16px;

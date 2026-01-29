@@ -37,8 +37,12 @@ function addWrappedText(
 // Check if we need a new page
 function checkNewPage(doc: jsPDF, y: number, needed: number = 40): number {
     const pageHeight = doc.internal.pageSize.getHeight();
+    const pageWidth = doc.internal.pageSize.getWidth();
     if (y + needed > pageHeight - 20) {
         doc.addPage();
+        // Add dark background to new page
+        doc.setFillColor(...COLORS.dark);
+        doc.rect(0, 0, pageWidth, pageHeight, 'F');
         return 30;
     }
     return y;
@@ -93,11 +97,19 @@ export async function generatePDF(result: ResearchResult): Promise<void> {
     doc.setTextColor(...COLORS.muted);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Generated: ${new Date(result.timestamp).toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
-    })}`, margin, y);
+    const timestamp = result.timestamp ? new Date(result.timestamp) : new Date();
+    const formattedDate = !isNaN(timestamp.getTime()) 
+        ? timestamp.toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+        })
+        : new Date().toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+        });
+    doc.text(`Generated: ${formattedDate}`, margin, y);
 
     // ============ CONTENT PAGES ============
     doc.addPage();
@@ -379,12 +391,6 @@ export async function generatePDF(result: ResearchResult): Promise<void> {
     const totalPages = doc.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
-        
-        // Background (for pages after first)
-        if (i > 1) {
-            doc.setFillColor(...COLORS.dark);
-            doc.rect(0, 0, pageWidth, pageHeight, 'F');
-        }
         
         // Footer line
         doc.setDrawColor(...COLORS.cardBg);
