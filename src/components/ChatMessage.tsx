@@ -1,6 +1,8 @@
 'use client';
 
 import { memo, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import styles from './ChatMessage.module.css';
 import './ChatMessage.global.css'; // Add global styles for innerHTML content
 
@@ -50,21 +52,7 @@ function ChatMessageComponent({ role, content, isStreaming, onViewForm }: ChatMe
     };
 
     // Format content - convert markdown-like syntax to HTML
-    const formatContent = (text: string) => {
-        // Handle code blocks
-        let formatted = text.replace(/```([\s\S]*?)```/g, '<pre class="code-block">$1</pre>');
 
-        // Handle inline code
-        formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-        // Handle bold
-        formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-
-        // Handle line breaks
-        formatted = formatted.replace(/\n/g, '<br/>');
-
-        return formatted;
-    };
 
     const renderContent = () => {
         // Match both complete and incomplete JSON blocks
@@ -151,10 +139,11 @@ function ChatMessageComponent({ role, content, isStreaming, onViewForm }: ChatMe
                 } else {
                     // Not a form action, render as code block
                     return (
-                        <div
-                            key={index}
-                            dangerouslySetInnerHTML={{ __html: formatContent(part.fullMatch || part.content) }}
-                        />
+                        <div key={index} className={styles.content}>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {part.fullMatch || part.content}
+                            </ReactMarkdown>
+                        </div>
                     );
                 }
             } else if (part.type === 'json_streaming') {
@@ -172,10 +161,11 @@ function ChatMessageComponent({ role, content, isStreaming, onViewForm }: ChatMe
             if (!part.content.trim()) return null;
 
             return (
-                <div
-                    key={index}
-                    dangerouslySetInnerHTML={{ __html: formatContent(part.content) }}
-                />
+                <div key={index} className={styles.content}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {part.content}
+                    </ReactMarkdown>
+                </div>
             );
         });
     };
