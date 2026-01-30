@@ -201,6 +201,14 @@
     min-height: 0; /* Critical for flex children to scroll properly */
 }
 
+/* Results Area - for ResearchResults within layout */
+.resultsArea {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
+}
+
 .messagesContainer {
     flex: 1;
     overflow-y: auto;

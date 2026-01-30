@@ -439,11 +439,8 @@ export default function AppPage() {
         return <Researching />;
     }
 
-    if (currentState === 'PRESENTING') {
-        return <ResearchResults />;
-    }
-
-    if (currentState !== 'INTERVIEWING') {
+    // Handle non-standard states (not INTERVIEWING or PRESENTING)
+    if (currentState !== 'INTERVIEWING' && currentState !== 'PRESENTING') {
         return (
             <div className={styles.container}>
                 <div className={styles.placeholder}>
@@ -484,7 +481,7 @@ export default function AppPage() {
                         </div>
                         <div className={styles.headerActions}>
                             <LocationBanner />
-                            {formSchema && (
+                            {formSchema && currentState !== 'PRESENTING' && (
                                 <button
                                     onClick={() => transition('FORM_PREVIEW', 'view_form')}
                                     className={styles.viewFormButton}
@@ -496,19 +493,26 @@ export default function AppPage() {
                     </div>
                 </header>
 
-                {/* Chat Area */}
-                <main className={styles.chatArea}>
-                    <div 
-                        ref={messagesContainerRef}
-                        className={styles.messagesContainer}
-                        onScroll={handleScroll}
-                    >
-                        {/* Welcome message if no messages yet */}
-                        {messages.length === 0 && (
-                            <div className={styles.welcome}>
-                                <div className={styles.welcomeIcon}>
-                                    <SparkleIcon />
-                                </div>
+                {/* Render ResearchResults or Chat Area based on state */}
+                {currentState === 'PRESENTING' ? (
+                    <main className={styles.resultsArea}>
+                        <ResearchResults />
+                    </main>
+                ) : (
+                    <>
+                        {/* Chat Area */}
+                        <main className={styles.chatArea}>
+                            <div 
+                                ref={messagesContainerRef}
+                                className={styles.messagesContainer}
+                                onScroll={handleScroll}
+                            >
+                                {/* Welcome message if no messages yet */}
+                                {messages.length === 0 && (
+                                    <div className={styles.welcome}>
+                                        <div className={styles.welcomeIcon}>
+                                            <SparkleIcon />
+                                        </div>
                                 <h1 className={styles.welcomeTitle}>
                                     What would you like to <span className={styles.gradient}>research</span> today?
                                 </h1>
@@ -641,6 +645,8 @@ export default function AppPage() {
                     </div>
                 </form>
             </footer>
+                    </>
+                )}
             </div>
         </div>
     );

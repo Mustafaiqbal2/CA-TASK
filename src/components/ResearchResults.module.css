@@ -1,7 +1,7 @@
 /* Research Results Styles */
 .container {
     padding: var(--space-4);
-    min-height: 100vh;
+    padding-bottom: var(--space-8);
     animation: fadeIn 0.5s ease-out;
 }
 

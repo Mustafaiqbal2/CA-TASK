@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import styles from './LocationBanner.module.css';
 
 type LocationData = {
@@ -8,7 +8,19 @@ type LocationData = {
   country: string;
   region: string;
   timezone: string;
+  lat?: number;
+  lon?: number;
   isOverridden?: boolean;
+};
+
+type SearchResult = {
+  id: string;
+  city: string;
+  region: string;
+  country: string;
+  displayName: string;
+  lat: number;
+  lon: number;
 };
 
 function useLocation() {
@@ -36,32 +48,60 @@ function useLocation() {
     }
   };
 
+  // Use browser's Geolocation API for precise location
   const detectLocation = async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      // Use server-side API route to avoid CORS issues
-      const res = await fetch('/api/location');
-      const data: any = await res.json();
-      
-      // Check if API returned an error or empty data
-      if (!res.ok || data.error || !data.city) {
-        throw new Error(data.error || 'Failed to detect location');
+      // Check if geolocation is available
+      if (!navigator.geolocation) {
+        throw new Error('Geolocation is not supported by your browser');
+      }
+
+      // Get precise coordinates from browser
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000, // 5 minutes cache
+        });
+      });
+
+      const { latitude, longitude } = position.coords;
+
+      // Reverse geocode to get city/country from coordinates
+      const res = await fetch(`/api/geocode?lat=${latitude}&lon=${longitude}`);
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to reverse geocode');
       }
 
       setLocation({
         city: data.city,
-        country: data.country || 'Unknown',
+        country: data.country,
         region: data.region || data.city,
-        timezone: data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        lat: latitude,
+        lon: longitude,
         isOverridden: false,
       });
-    } catch (e) {
+    } catch (e: any) {
       console.error('Location detection failed:', e);
-      setError(e instanceof Error ? e.message : 'Detection failed');
       
-      // Try timezone-based fallback on client side
+      // Handle specific geolocation errors
+      if (e.code === 1) {
+        setError('Location access denied. Please enable location permissions.');
+      } else if (e.code === 2) {
+        setError('Unable to determine location. Please search manually.');
+      } else if (e.code === 3) {
+        setError('Location request timed out. Please try again.');
+      } else {
+        setError(e.message || 'Detection failed');
+      }
+
+      // Fallback to timezone-based location
       try {
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         const parts = timezone.split('/');
@@ -74,30 +114,21 @@ function useLocation() {
             timezone,
             isOverridden: false,
           });
-          setError(null); // Clear error since we got a fallback
+          setError(null);
           return;
         }
       } catch {
         // Ignore fallback errors
       }
-      
-      // Keep previous location if available
-      setLocationState(prev =>
-        prev ?? {
-          city: 'Unknown',
-          country: 'Unknown',
-          region: 'Unknown',
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          isOverridden: false,
-        }
-      );
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    // Auto-detect once if nothing is stored or user hasn't overridden it.
+    // Auto-detect on mount if:
+    // 1. No location stored at all
+    // 2. Location exists but was NOT manually overridden (re-detect for accuracy)
     if (!location || !location.isOverridden) {
       void detectLocation();
     }
@@ -107,31 +138,35 @@ function useLocation() {
   return { location, isLoading, error, setLocation, detectLocation };
 }
 
-// Popular locations with their data
-const COMMON_LOCATIONS = [
-  { id: 'auto', label: '🔍 Auto-detect my location', city: '', country: '', region: '' },
-  { id: 'new-york', label: '🗽 New York, USA', city: 'New York', country: 'United States', region: 'New York' },
-  { id: 'san-francisco', label: '🌉 San Francisco, USA', city: 'San Francisco', country: 'United States', region: 'California' },
-  { id: 'los-angeles', label: '🌴 Los Angeles, USA', city: 'Los Angeles', country: 'United States', region: 'California' },
-  { id: 'london', label: '🇬🇧 London, UK', city: 'London', country: 'United Kingdom', region: 'England' },
-  { id: 'berlin', label: '🇩🇪 Berlin, Germany', city: 'Berlin', country: 'Germany', region: 'Berlin' },
-  { id: 'paris', label: '🇫🇷 Paris, France', city: 'Paris', country: 'France', region: 'Île-de-France' },
-  { id: 'tokyo', label: '🇯🇵 Tokyo, Japan', city: 'Tokyo', country: 'Japan', region: 'Tokyo' },
-  { id: 'sydney', label: '🇦🇺 Sydney, Australia', city: 'Sydney', country: 'Australia', region: 'New South Wales' },
-  { id: 'toronto', label: '🇨🇦 Toronto, Canada', city: 'Toronto', country: 'Canada', region: 'Ontario' },
-  { id: 'singapore', label: '🇸🇬 Singapore', city: 'Singapore', country: 'Singapore', region: 'Singapore' },
-  { id: 'dubai', label: '🇦🇪 Dubai, UAE', city: 'Dubai', country: 'United Arab Emirates', region: 'Dubai' },
-  { id: 'mumbai', label: '🇮🇳 Mumbai, India', city: 'Mumbai', country: 'India', region: 'Maharashtra' },
-  { id: 'amsterdam', label: '🇳🇱 Amsterdam, Netherlands', city: 'Amsterdam', country: 'Netherlands', region: 'North Holland' },
-  { id: 'global', label: '🌍 Global (No specific location)', city: 'Global', country: 'Global', region: 'Global' },
-];
+// Debounce hook for search
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
 
 export function LocationBanner() {
   const { location, isLoading, error, setLocation, detectLocation } = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  
+  const debouncedQuery = useDebounce(searchQuery, 300);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -139,6 +174,7 @@ export function LocationBanner() {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
         setSearchQuery('');
+        setSearchResults([]);
       }
     }
 
@@ -149,48 +185,95 @@ export function LocationBanner() {
   // Focus search input when dropdown opens
   useEffect(() => {
     if (isOpen && searchRef.current) {
-      searchRef.current.focus();
+      setTimeout(() => searchRef.current?.focus(), 100);
     }
   }, [isOpen]);
 
-  const handleSelectLocation = async (loc: typeof COMMON_LOCATIONS[0]) => {
-    if (loc.id === 'auto') {
-      // Trigger auto-detection
-      setIsOpen(false);
-      setSearchQuery('');
-      await detectLocation();
-    } else {
-      // Set the selected location
-      setLocation({
-        city: loc.city,
-        country: loc.country,
-        region: loc.region,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        isOverridden: true,
-      });
-      setIsOpen(false);
-      setSearchQuery('');
-    }
-  };
+  // Search for locations when query changes
+  useEffect(() => {
+    async function searchLocations() {
+      if (debouncedQuery.length < 2) {
+        setSearchResults([]);
+        return;
+      }
 
-  const filteredLocations = COMMON_LOCATIONS.filter(loc =>
-    loc.label.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+      setIsSearching(true);
+      setSearchError(null);
+
+      try {
+        const res = await fetch(`/api/geocode?q=${encodeURIComponent(debouncedQuery)}`);
+        const data = await res.json();
+
+        if (!res.ok || data.error) {
+          throw new Error(data.error || 'Search failed');
+        }
+
+        setSearchResults(data.results || []);
+      } catch (e) {
+        console.error('Location search failed:', e);
+        setSearchError('Search failed. Please try again.');
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }
+
+    searchLocations();
+  }, [debouncedQuery]);
+
+  const handleSelectLocation = useCallback((result: SearchResult) => {
+    setLocation({
+      city: result.city || result.region,
+      country: result.country,
+      region: result.region,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      lat: result.lat,
+      lon: result.lon,
+      isOverridden: true,
+    });
+    setIsOpen(false);
+    setSearchQuery('');
+    setSearchResults([]);
+  }, [setLocation]);
+
+  const handleAutoDetect = useCallback(async () => {
+    setIsOpen(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    await detectLocation();
+  }, [detectLocation]);
+
+  const handleSetGlobal = useCallback(() => {
+    setLocation({
+      city: 'Global',
+      country: 'Global',
+      region: 'Global',
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      isOverridden: true,
+    });
+    setIsOpen(false);
+    setSearchQuery('');
+    setSearchResults([]);
+  }, [setLocation]);
+
+  const closeDropdown = useCallback(() => {
+    setIsOpen(false);
+    setSearchQuery('');
+    setSearchResults([]);
+  }, []);
 
   // Determine display text
   const getDisplayText = () => {
-    if (isLoading) return '🔄 Detecting...';
-    if (error) return '⚠️ Detection failed';
+    if (isLoading) return 'Detecting...';
     if (!location || (location.city === 'Unknown' && location.country === 'Unknown')) {
-      return '📍 Select location';
+      return 'Set location';
     }
     if (location.city === 'Global') {
       return '🌍 Global';
     }
-    return `📍 ${location.city}, ${location.country}`;
+    return `📍 ${location.city}`;
   };
 
-  // Determine if location is set
   const hasLocation = location && location.city !== 'Unknown' && location.city !== '';
 
   return (
@@ -200,6 +283,7 @@ export function LocationBanner() {
         onClick={() => setIsOpen(!isOpen)}
         disabled={isLoading}
       >
+        {isLoading && <span className={styles.loadingSpinner} />}
         <span className={styles.locationText}>{getDisplayText()}</span>
         <span className={`${styles.chevron} ${isOpen ? styles.chevronUp : ''}`}>
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -209,44 +293,148 @@ export function LocationBanner() {
       </button>
 
       {isOpen && (
-        <div className={styles.dropdown}>
-          <div className={styles.searchContainer}>
-            <input
-              ref={searchRef}
-              type="text"
-              placeholder="Search locations..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={styles.searchInput}
-            />
-            <span className={styles.searchIcon}>🔍</span>
-          </div>
-          
-          <div className={styles.locationList}>
-            {filteredLocations.map((loc) => (
-              <button
-                key={loc.id}
-                className={`${styles.locationOption} ${
-                  location?.city === loc.city && location?.country === loc.country
-                    ? styles.selected
-                    : ''
-                }`}
-                onClick={() => handleSelectLocation(loc)}
-              >
-                <span className={styles.optionLabel}>{loc.label}</span>
-                {location?.city === loc.city && location?.country === loc.country && loc.id !== 'auto' && (
-                  <span className={styles.checkmark}>✓</span>
+        <>
+          {/* Mobile overlay backdrop */}
+          <div 
+            className={styles.mobileOverlay} 
+            onClick={closeDropdown}
+          />
+          <div className={styles.dropdown}>
+            {/* Search Header */}
+            <div className={styles.searchHeader}>
+              <div className={styles.searchInputWrapper}>
+                <svg className={styles.searchIcon} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="M21 21l-4.35-4.35" />
+                </svg>
+                <input
+                  ref={searchRef}
+                  type="text"
+                  placeholder="Search any city worldwide..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className={styles.searchInput}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+                {searchQuery && (
+                  <button 
+                    className={styles.clearButton}
+                    onClick={() => {
+                      setSearchQuery('');
+                      setSearchResults([]);
+                      searchRef.current?.focus();
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 6L6 18M6 6l12 12" />
+                    </svg>
+                  </button>
                 )}
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className={styles.quickActions}>
+              <button 
+                className={styles.quickAction}
+                onClick={handleAutoDetect}
+                disabled={isLoading}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M12 2v2m0 16v2M2 12h2m16 0h2" />
+                  <path d="M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41" />
+                </svg>
+                <span>Auto-detect location</span>
+                {isLoading && <span className={styles.loadingDots}>...</span>}
               </button>
-            ))}
-            
-            {filteredLocations.length === 0 && (
-              <div className={styles.noResults}>
-                No locations found. Try "Auto-detect" or select a nearby city.
+              <button 
+                className={`${styles.quickAction} ${location?.city === 'Global' ? styles.selected : ''}`}
+                onClick={handleSetGlobal}
+              >
+                <span>🌍</span>
+                <span>Global (no specific location)</span>
+              </button>
+            </div>
+
+            {/* Error Message */}
+            {(error || searchError) && (
+              <div className={styles.errorMessage}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 8v4m0 4h.01" />
+                </svg>
+                <span>{error || searchError}</span>
+              </div>
+            )}
+
+            {/* Search Results */}
+            <div className={styles.resultsContainer}>
+              {isSearching && (
+                <div className={styles.searchingState}>
+                  <span className={styles.loadingSpinner} />
+                  <span>Searching...</span>
+                </div>
+              )}
+
+              {!isSearching && searchQuery.length >= 2 && searchResults.length === 0 && (
+                <div className={styles.noResults}>
+                  <span>No cities found for &ldquo;{searchQuery}&rdquo;</span>
+                  <span className={styles.noResultsHint}>Try a different spelling or nearby city</span>
+                </div>
+              )}
+
+              {!isSearching && searchResults.length > 0 && (
+                <div className={styles.resultsList}>
+                  {searchResults.map((result) => (
+                    <button
+                      key={result.id}
+                      className={styles.resultItem}
+                      onClick={() => handleSelectLocation(result)}
+                    >
+                      <div className={styles.resultIcon}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                          <circle cx="12" cy="10" r="3" />
+                        </svg>
+                      </div>
+                      <div className={styles.resultContent}>
+                        <span className={styles.resultCity}>
+                          {result.city || result.region}
+                        </span>
+                        <span className={styles.resultDetails}>
+                          {[result.region, result.country].filter(Boolean).join(', ')}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {!searchQuery && !isSearching && (
+                <div className={styles.searchHint}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                    <circle cx="12" cy="10" r="3" />
+                  </svg>
+                  <span>Start typing to search for any city</span>
+                </div>
+              )}
+            </div>
+
+            {/* Current Location Display */}
+            {location && location.city !== 'Unknown' && (
+              <div className={styles.currentLocation}>
+                <span className={styles.currentLabel}>Current:</span>
+                <span className={styles.currentValue}>
+                  {location.city === 'Global' ? '🌍 Global' : `📍 ${location.city}, ${location.country}`}
+                </span>
               </div>
             )}
           </div>
-        </div>
+        </>
       )}
     </div>
   );
