@@ -217,8 +217,22 @@ Execute the ${researchDepth.toUpperCase()} research plan. Be THOROUGH - the user
                     // Process stream
                     console.log('[15] Starting to read from agent stream...');
                     let chunkCount = 0;
+                    let streamClosed = false;
+                    
+                    const safeClose = () => {
+                        if (!streamClosed) {
+                            streamClosed = true;
+                            try {
+                                controller.close();
+                            } catch (e) {
+                                // Already closed
+                            }
+                        }
+                    };
 
                     for await (const part of result.fullStream) {
+                        if (streamClosed) break;
+                        
                         chunkCount++;
                         if (chunkCount % 50 === 0) console.log(`[Research API] Processed ${chunkCount} chunks...`);
 
@@ -229,44 +243,75 @@ Execute the ${researchDepth.toUpperCase()} research plan. Be THOROUGH - the user
                             // AI SDK v4 (legacy) uses chunk.textDelta
                             const text = chunk.payload?.text || chunk.textDelta || '';
                             if (text && typeof text === 'string') {
-                                controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(text)}\n`));
+                                try {
+                                    controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(text)}\n`));
+                                } catch (e) {
+                                    // Controller closed (client aborted)
+                                    console.log('[Research API] Client disconnected, stopping stream');
+                                    streamClosed = true;
+                                    break;
+                                }
                             }
                         } else if (chunk.type === 'tool-call') {
                             // Mastra uses payload.toolName for tool name
                             const toolName = chunk.payload?.toolName || chunk.toolName || 'unknown tool';
                             const toolMsg = `\n[System: Using tool ${toolName}...]`;
-                            controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(toolMsg)}\n`));
+                            try {
+                                controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(toolMsg)}\n`));
+                            } catch (e) {
+                                console.log('[Research API] Client disconnected');
+                                streamClosed = true;
+                                break;
+                            }
                         } else if (chunk.type === 'tool-result') {
                             // Send tool result notification
                             const toolName = chunk.payload?.toolName || chunk.toolName || 'tool';
                             const resultMsg = `\n[System: ${toolName} completed]`;
-                            controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(resultMsg)}\n`));
+                            try {
+                                controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(resultMsg)}\n`));
+                            } catch (e) {
+                                console.log('[Research API] Client disconnected');
+                                streamClosed = true;
+                                break;
+                            }
                         } else if (chunk.type === 'error') {
                             const errorMsg = `\n[System Error: ${chunk.payload?.error || chunk.error || 'Unknown error'}]`;
-                            controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(errorMsg)}\n`));
+                            try {
+                                controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(errorMsg)}\n`));
+                            } catch (e) {
+                                console.log('[Research API] Client disconnected');
+                                streamClosed = true;
+                                break;
+                            }
                             console.error('[CHUNK-ERROR]', chunk.payload || chunk.error);
                         } else if (chunk.type === 'step-finish') {
                             // Notify about step completion
                             const stepMsg = `\n[System: Step completed, proceeding...]`;
-                            controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(stepMsg)}\n`));
+                            try {
+                                controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(stepMsg)}\n`));
+                            } catch (e) {
+                                console.log('[Research API] Client disconnected');
+                                streamClosed = true;
+                                break;
+                            }
                         }
                     }
 
                     console.log('[Research API] Stream completed');
-                    controller.close();
+                    safeClose();
 
                 } catch (error) {
                     console.error('[ERROR] Stream processing error:', error);
                     console.error('[ERROR] Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
 
-                    // Try to notify client
+                    // Try to notify client (may fail if already closed)
                     try {
                         const errorMsg = `\n[System Error: ${error instanceof Error ? error.message : String(error)}]`;
                         controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(errorMsg)}\n`));
+                        controller.close();
                     } catch (e) {
-                        console.error('[ERROR] Could not send error to client:', e);
+                        // Controller already closed, ignore
                     }
-                    controller.close();
                 }
             },
         });

@@ -130,6 +130,8 @@ export function Researching() {
     // Track which attempt ID we're currently processing
     // This ref tracks the attempt ID that this component instance is handling
     const handlingAttemptId = useRef<number | null>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
+    const userClickedCancelRef = useRef(false);
     
     // Track if component is still mounted to prevent state updates after unmount
     const isMountedRef = useRef(true);
@@ -155,6 +157,8 @@ export function Researching() {
         setElapsedTime(0);
         setLogs([]);
         handlingAttemptId.current = null; // Reset to allow new attempt
+        abortControllerRef.current = null;
+        userClickedCancelRef.current = false;
         // Transition to FORM_ACTIVE first, then back to RESEARCHING to get new attempt ID
         // Or directly set new attempt - but cleanest is to go through state machine
         const currentAttemptId = useAppStore.getState().researchAttemptId;
@@ -176,8 +180,8 @@ export function Researching() {
         const currentAttemptId = researchAttemptId;
         
         // Skip if no form or no data or no attempt ID
-        if (!currentFormId || !formData || !currentAttemptId) {
-            console.log('[CLIENT] Missing required data:', { currentFormId, hasFormData: !!formData, currentAttemptId });
+        if (!currentFormId || !formData || Object.keys(formData).length === 0 || !currentAttemptId) {
+            console.log('[CLIENT] Missing required data:', { currentFormId, hasFormData: !!formData, formDataKeys: formData ? Object.keys(formData) : [], currentAttemptId });
             return;
         }
         
@@ -192,8 +196,10 @@ export function Researching() {
         handlingAttemptId.current = currentAttemptId;
         console.log('[CLIENT] Starting research for attempt:', currentAttemptId, 'form:', currentFormId);
 
-        // AbortController to cancel in-flight requests on unmount
+        // Create abort controller for explicit cancellation
         const abortController = new AbortController();
+        abortControllerRef.current = abortController;
+        userClickedCancelRef.current = false;
         let requestCompleted = false;
         
         // Reset UI state for fresh research
@@ -279,7 +285,7 @@ export function Researching() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(requestBody),
-                    signal: abortController.signal, // Allow cancellation
+                    signal: abortController.signal,
                 });
 
                 console.log('[CLIENT] Response received', response.status, response.ok);
@@ -298,6 +304,12 @@ export function Researching() {
                     if (done) {
                         console.log('[CLIENT] Stream done, chunks received:', chunkCount);
                         break;
+                    }
+                    // Check if request was explicitly cancelled by user
+                    if (abortController.signal.aborted) {
+                        console.log('[CLIENT] Stream cancelled for attempt:', currentAttemptId);
+                        reader.cancel();
+                        return;
                     }
                     chunkCount++;
                     const newChunk = decoder.decode(value, { stream: true });
@@ -522,26 +534,30 @@ export function Researching() {
                     console.log('Final JSON Length:', finalJson.length);
                     console.log('Final JSON Snippet:', finalJson.substring(0, 500) + '...' + finalJson.substring(finalJson.length - 500));
 
-                    // Fallback for demo if parsing fails but we got text
+                    // Fallback if parsing fails but we got text
                     requestCompleted = true;
-                    researchedFormId.current = sessionKey; // Mark as completed (even with fallback)
-                    setResearchResults({
-                        title: `Research Report: ${formSchema?.researchTopic}`,
-                        summary: finalJson.replace(/```json/g, '').replace(/```/g, '').trim().substring(0, 1000) + '...',
-                        keyFindings: ["Could not parse structured findings. See summary."],
-                        sources: [],
-                        timestamp: new Date(),
-                        id: ''
-                    });
-                    setTimeout(() => transition('PRESENTING', 'research_complete'), 2000);
+                    if (isMountedRef.current) {
+                        setResearchResults({
+                            title: `Research Report: ${formSchema?.researchTopic}`,
+                            summary: finalJson.replace(/```json/g, '').replace(/```/g, '').trim().substring(0, 1000) + '...',
+                            keyFindings: ["Could not parse structured findings. See summary."],
+                            sources: [],
+                            timestamp: new Date(),
+                            id: ''
+                        });
+                        setTimeout(() => {
+                            if (isMountedRef.current) {
+                                transition('PRESENTING', 'research_complete');
+                            }
+                        }, 2000);
+                    }
                 }
 
             } catch (error) {
-                // Check for abort - don't show error if request was intentionally cancelled
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    console.log('[CLIENT] Request aborted (expected during unmount)');
-                    // Reset tracking so next mount can try again
-                    researchedFormId.current = null;
+                // Check for abort - don't show error if request was intentionally cancelled by user
+                if (abortController.signal.aborted && userClickedCancelRef.current) {
+                    console.log('[CLIENT] Request explicitly cancelled by user for attempt:', currentAttemptId);
+                    handlingAttemptId.current = null;
                     return;
                 }
                 if (requestCompleted) {
@@ -581,10 +597,10 @@ export function Researching() {
 
         return () => {
             console.log('[CLIENT] Cleanup - attempt:', currentAttemptId, 'completed:', requestCompleted);
-            // Only abort if not completed - don't reset handlingAttemptId
-            // The ref prevents duplicates until a new attemptId comes from the store
-            if (!requestCompleted) {
-                abortController.abort(); // Cancel in-flight fetch
+            // Only abort if user explicitly clicked cancel
+            // Do NOT abort on React cleanup/remount to avoid empty-body requests
+            if (!requestCompleted && !userClickedCancelRef.current && abortControllerRef.current) {
+                console.log('[CLIENT] React cleanup (not user cancel) - keeping request alive');
             }
             clearInterval(timer);
         };
@@ -754,7 +770,15 @@ export function Researching() {
 
                 <button
                     className={styles.cancelButton}
-                    onClick={() => transition('FORM_ACTIVE', 'research_cancelled')}
+                    onClick={() => {
+                        console.log('[CLIENT] User clicked cancel - aborting request');
+                        userClickedCancelRef.current = true;
+                        if (abortControllerRef.current) {
+                            abortControllerRef.current.abort();
+                        }
+                        handlingAttemptId.current = null;
+                        transition('FORM_ACTIVE', 'research_cancelled');
+                    }}
                 >
                     <span>Cancel Research</span>
                 </button>
