@@ -411,6 +411,8 @@ export function FormActive({ formSchema }: FormActiveProps) {
                             onBlur={() => handleBlur(field.id)}
                             index={index}
                             isPrefilled={!!field.prefilledFromInterview}
+                            otherValues={otherValues}
+                            setOtherValues={setOtherValues}
                         />
                     ))}
                 </div>
@@ -509,9 +511,11 @@ interface FormFieldInputProps {
     onBlur: () => void;
     index: number;
     isPrefilled?: boolean;
+    otherValues: Record<string, string>;
+    setOtherValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }
 
-function FormFieldInput({ field, value, error, onChange, onBlur, index, isPrefilled }: FormFieldInputProps) {
+function FormFieldInput({ field, value, error, onChange, onBlur, index, isPrefilled, otherValues, setOtherValues }: FormFieldInputProps) {
     const animationDelay = `${index * 0.05}s`;
 
     const renderInput = () => {

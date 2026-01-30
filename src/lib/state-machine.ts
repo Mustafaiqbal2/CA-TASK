@@ -455,6 +455,7 @@ export interface AppStoreState {
     researchResults: ResearchResult | null;
     researchProgress: number; // 0-100
     researchStatus: string;
+    researchAttemptId: number; // Unique ID for each research attempt
 
     // Location context
     location: LocationContext | null;
@@ -518,6 +519,7 @@ const initialState = {
     researchResults: null as ResearchResult | null,
     researchProgress: 0,
     researchStatus: '',
+    researchAttemptId: 0, // Increments each time we enter RESEARCHING state
     location: null as LocationContext | null,
     isSidebarOpen: true, // Open by default
 };
@@ -564,14 +566,27 @@ export const useAppStore = create<AppStoreState>()(
                     `${currentState} → ${to} | Trigger: ${trigger}`
                 );
 
-                // Update state
-                set({
+                // Prepare state update
+                const stateUpdate: Partial<AppStoreState> = {
                     currentState: to,
                     previousState: currentState,
                     stateHistory: [...stateHistory, to],
                     transitionLogs: [...transitionLogs, log],
                     error: null, // Clear any previous errors
-                });
+                };
+
+                // If transitioning TO RESEARCHING, increment the attempt ID
+                // This ensures each research attempt has a unique ID
+                if (to === 'RESEARCHING') {
+                    const currentAttemptId = get().researchAttemptId;
+                    stateUpdate.researchAttemptId = currentAttemptId + 1;
+                    stateUpdate.researchProgress = 0;
+                    stateUpdate.researchStatus = 'Starting research...';
+                    console.log(`[StateMachine] New research attempt ID: ${stateUpdate.researchAttemptId}`);
+                }
+
+                // Update state
+                set(stateUpdate);
 
                 return true;
             },

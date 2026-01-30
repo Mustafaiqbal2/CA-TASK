@@ -109,20 +109,38 @@ const NeuralNetwork = () => {
 };
 
 export function Researching() {
-    const { location, formData, researchStatus, researchProgress, setResearchProgress, setResearchResults, transition, formSchema, reset } = useAppStore();
+    const { 
+        location, 
+        formData, 
+        researchStatus, 
+        researchProgress, 
+        researchAttemptId,
+        setResearchProgress, 
+        setResearchResults, 
+        transition, 
+        formSchema, 
+        reset 
+    } = useAppStore();
     const [elapsedTime, setElapsedTime] = useState(0);
     const [logs, setLogs] = useState<string[]>([]);
     const logsEndRef = useRef<HTMLDivElement>(null);
     const [hasError, setHasError] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
-    const [retryCount, setRetryCount] = useState(0);
     
-    // Track which form ID we've already started researching to prevent duplicates
-    const researchedFormId = useRef<string | null>(null);
+    // Track which attempt ID we're currently processing
+    // This ref tracks the attempt ID that this component instance is handling
+    const handlingAttemptId = useRef<number | null>(null);
+    
+    // Track if component is still mounted to prevent state updates after unmount
+    const isMountedRef = useRef(true);
 
     // Scroll to top when component mounts
     useEffect(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
     }, []);
 
     // Auto-scroll logs when new entries are added
@@ -130,15 +148,21 @@ export function Researching() {
         logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [logs]);
 
-    // Retry handler - reset the form ID to allow re-research
+    // Retry handler - transition back to RESEARCHING to get a new attempt ID
     const handleRetry = () => {
         setHasError(false);
         setErrorMessage('');
-        setRetryCount(prev => prev + 1);
         setElapsedTime(0);
         setLogs([]);
-        researchedFormId.current = null; // Allow new research
-        setResearchProgress(0, 'Retrying research...');
+        handlingAttemptId.current = null; // Reset to allow new attempt
+        // Transition to FORM_ACTIVE first, then back to RESEARCHING to get new attempt ID
+        // Or directly set new attempt - but cleanest is to go through state machine
+        const currentAttemptId = useAppStore.getState().researchAttemptId;
+        useAppStore.setState({ 
+            researchAttemptId: currentAttemptId + 1,
+            researchProgress: 0,
+            researchStatus: 'Retrying research...'
+        });
     };
 
     // Start new research
@@ -146,25 +170,27 @@ export function Researching() {
         reset();
     };
 
-    // Call research API - uses form ID + session key to prevent duplicate calls
+    // Call research API - uses researchAttemptId from store to prevent duplicate calls
     useEffect(() => {
         const currentFormId = formSchema?.id;
+        const currentAttemptId = researchAttemptId;
         
-        // Skip if no form or no data
-        if (!currentFormId || !formData) return;
-        
-        // Create a unique session key for this research attempt
-        const sessionKey = `${currentFormId}_${retryCount}`;
-        
-        // Skip if we've already completed this exact session
-        if (researchedFormId.current === sessionKey) {
-            console.log('[CLIENT] Skipping duplicate research for session:', sessionKey);
+        // Skip if no form or no data or no attempt ID
+        if (!currentFormId || !formData || !currentAttemptId) {
+            console.log('[CLIENT] Missing required data:', { currentFormId, hasFormData: !!formData, currentAttemptId });
             return;
         }
         
-        // Mark this session as in-progress (not complete yet)
-        const previousSession = researchedFormId.current;
-        researchedFormId.current = `pending_${sessionKey}`;
+        // Skip if we're already handling this attempt
+        // This prevents duplicate calls from React strict mode remounting
+        if (handlingAttemptId.current === currentAttemptId) {
+            console.log('[CLIENT] Already handling attempt:', currentAttemptId);
+            return;
+        }
+        
+        // Mark this attempt as being handled IMMEDIATELY
+        handlingAttemptId.current = currentAttemptId;
+        console.log('[CLIENT] Starting research for attempt:', currentAttemptId, 'form:', currentFormId);
 
         // AbortController to cancel in-flight requests on unmount
         const abortController = new AbortController();
@@ -477,13 +503,20 @@ export function Researching() {
                     // Validate it has fields we need
                     if (normalizedResult.title || normalizedResult.summary) {
                         requestCompleted = true;
-                        researchedFormId.current = sessionKey; // Mark as successfully completed
-                        setResearchResults(normalizedResult);
-                        setTimeout(() => transition('PRESENTING', 'research_complete'), 1000);
+                        console.log('[CLIENT] Research completed successfully for attempt:', currentAttemptId);
+                        
+                        // Only update state if still mounted
+                        if (isMountedRef.current) {
+                            setResearchResults(normalizedResult);
+                            setTimeout(() => {
+                                if (isMountedRef.current) {
+                                    transition('PRESENTING', 'research_complete');
+                                }
+                            }, 1000);
+                        }
                     } else {
                         throw new Error('Missing result fields');
                     }
-
                 } catch (parseError) {
                     console.error('Failed to parse result JSON', parseError);
                     console.log('Final JSON Length:', finalJson.length);
@@ -534,24 +567,28 @@ export function Researching() {
                     userMessage += 'An unexpected error occurred.';
                 }
                 
-                setHasError(true);
-                setErrorMessage(userMessage);
-                setResearchProgress(0, 'Research failed');
+                if (isMountedRef.current) {
+                    setHasError(true);
+                    setErrorMessage(userMessage);
+                    setResearchProgress(0, 'Research failed');
+                }
+                // Reset tracking on error so retry can work
+                handlingAttemptId.current = null;
             }
         }
 
         startResearch();
 
         return () => {
-            console.log('[CLIENT] Cleanup - aborting request for form:', currentFormId);
-            // Only reset tracking if request didn't complete successfully
+            console.log('[CLIENT] Cleanup - attempt:', currentAttemptId, 'completed:', requestCompleted);
+            // Only abort if not completed - don't reset handlingAttemptId
+            // The ref prevents duplicates until a new attemptId comes from the store
             if (!requestCompleted) {
-                researchedFormId.current = null;
+                abortController.abort(); // Cancel in-flight fetch
             }
-            abortController.abort(); // Cancel in-flight fetch
             clearInterval(timer);
         };
-    }, [formSchema?.id, retryCount]); // Re-run when form ID or retryCount changes
+    }, [formSchema?.id, researchAttemptId]); // Re-run when form ID or attempt ID changes
 
     // Format time
     const formatTime = (seconds: number) => {
