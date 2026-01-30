@@ -141,23 +141,29 @@ export function Researching() {
         reset();
     };
 
-    // Call research API - uses form ID to prevent duplicate calls
+    // Call research API - uses form ID + session key to prevent duplicate calls
     useEffect(() => {
         const currentFormId = formSchema?.id;
         
-        // Skip if no form, no data, or we've already started this exact form
+        // Skip if no form or no data
         if (!currentFormId || !formData) return;
-        if (researchedFormId.current === currentFormId && retryCount === 0) {
-            console.log('[CLIENT] Skipping duplicate research for form:', currentFormId);
+        
+        // Create a unique session key for this research attempt
+        const sessionKey = `${currentFormId}_${retryCount}`;
+        
+        // Skip if we've already completed this exact session
+        if (researchedFormId.current === sessionKey) {
+            console.log('[CLIENT] Skipping duplicate research for session:', sessionKey);
             return;
         }
         
-        // Mark this form as being researched
-        researchedFormId.current = currentFormId;
+        // Mark this session as in-progress (not complete yet)
+        const previousSession = researchedFormId.current;
+        researchedFormId.current = `pending_${sessionKey}`;
 
         // AbortController to cancel in-flight requests on unmount
         const abortController = new AbortController();
-        let isCancelled = false;
+        let requestCompleted = false;
         
         // Reset UI state for fresh research
         setElapsedTime(0);
@@ -166,24 +172,82 @@ export function Researching() {
         setErrorMessage('');
         setResearchProgress(0, 'Initializing...');
 
+        // Track content accumulation for smooth progress
+        let lastContentLength = 0;
+        let contentStarted = false;
+        
+        // Timer for elapsed time AND smooth progress updates
         const timer = setInterval(() => {
-            setElapsedTime(prev => prev + 1);
+            setElapsedTime(prev => {
+                const newTime = prev + 1;
+                
+                // Get current progress state
+                const currentProgress = useAppStore.getState().researchProgress;
+                
+                // Phase 1: Thinking phase (0-25%) - slow time-based progress
+                // AI is reasoning before sending any output
+                if (!contentStarted && currentProgress < 25) {
+                    // Logarithmic progress curve - fast at start, slows down
+                    // This gives the illusion of progress while waiting
+                    const targetProgress = Math.min(25, 5 + Math.log10(newTime + 1) * 10);
+                    if (targetProgress > currentProgress) {
+                        const messages = [
+                            'AI is planning research strategy...',
+                            'Analyzing requirements...',
+                            'Preparing search queries...',
+                            'Starting research...'
+                        ];
+                        const messageIndex = Math.min(Math.floor(newTime / 10), messages.length - 1);
+                        setResearchProgress(Math.floor(targetProgress), messages[messageIndex]);
+                    }
+                }
+                // Phase 2: Slow background progress during content streaming (max 85%)
+                // This prevents feeling stuck if content is slow
+                else if (contentStarted && currentProgress < 85) {
+                    // Very slow increment every 5 seconds to show life
+                    if (newTime % 5 === 0 && currentProgress < 80) {
+                        setResearchProgress(currentProgress + 1, useAppStore.getState().researchStatus);
+                    }
+                }
+                
+                return newTime;
+            });
         }, 1000);
 
         async function startResearch() {
             try {
                 console.log('[CLIENT] Starting research for form:', currentFormId);
                 setResearchProgress(5, 'Initializing research agent...');
+                
+                // Get fresh data from store to ensure we have latest
+                const storeState = useAppStore.getState();
+                const currentFormSchema = storeState.formSchema;
+                const currentFormData = storeState.formData;
+                const currentLocation = storeState.location;
+                
+                // Validate we have required data
+                if (!currentFormSchema || !currentFormData || Object.keys(currentFormData).length === 0) {
+                    console.error('[CLIENT] Missing required data:', {
+                        hasFormSchema: !!currentFormSchema,
+                        hasFormData: !!currentFormData,
+                        formDataKeys: currentFormData ? Object.keys(currentFormData) : []
+                    });
+                    throw new Error('Missing form data. Please go back and complete the form.');
+                }
+                
+                const requestBody = {
+                    formId: currentFormSchema.id,
+                    formData: currentFormData,
+                    location: currentLocation
+                };
+                
+                console.log('[CLIENT] Request body size:', JSON.stringify(requestBody).length);
                 console.log('[CLIENT] Making fetch request to /api/research');
 
                 const response = await fetch('/api/research', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        formId: formSchema?.id,
-                        formData: formData,
-                        location: location
-                    }),
+                    body: JSON.stringify(requestBody),
                     signal: abortController.signal, // Allow cancellation
                 });
 
@@ -272,6 +336,42 @@ export function Researching() {
                             else if (typeof content === 'string') {
                                 // Accumulate ALL string content to preserve JSON integrity
                                 finalJson += content;
+                                
+                                // Mark that content has started (exit thinking phase)
+                                if (!contentStarted && finalJson.length > 0) {
+                                    contentStarted = true;
+                                }
+                                
+                                // Smooth incremental progress based on content growth
+                                // Instead of fixed thresholds, we use relative growth
+                                const contentGrowth = finalJson.length - lastContentLength;
+                                lastContentLength = finalJson.length;
+                                
+                                const currentProgress = useAppStore.getState().researchProgress;
+                                
+                                // Only update if we've received meaningful new content (>100 chars)
+                                if (contentGrowth > 100 && currentProgress < 90) {
+                                    // Calculate increment based on content chunk size
+                                    // Larger chunks = bigger progress jumps, but capped
+                                    const increment = Math.min(5, Math.max(1, Math.floor(contentGrowth / 500)));
+                                    const newProgress = Math.min(90, currentProgress + increment);
+                                    
+                                    // Progress messages based on current progress range
+                                    let statusText = 'Processing...';
+                                    if (newProgress < 40) {
+                                        statusText = 'AI is analyzing...';
+                                    } else if (newProgress < 60) {
+                                        statusText = 'Gathering insights...';
+                                    } else if (newProgress < 80) {
+                                        statusText = 'Compiling research...';
+                                    } else {
+                                        statusText = 'Finalizing report...';
+                                    }
+                                    
+                                    if (newProgress > currentProgress) {
+                                        setResearchProgress(newProgress, statusText);
+                                    }
+                                }
                             }
                         }
                     }
@@ -371,6 +471,8 @@ export function Researching() {
                     
                     // Validate it has fields we need
                     if (normalizedResult.title || normalizedResult.summary) {
+                        requestCompleted = true;
+                        researchedFormId.current = sessionKey; // Mark as successfully completed
                         setResearchResults(normalizedResult);
                         setTimeout(() => transition('PRESENTING', 'research_complete'), 1000);
                     } else {
@@ -383,6 +485,8 @@ export function Researching() {
                     console.log('Final JSON Snippet:', finalJson.substring(0, 500) + '...' + finalJson.substring(finalJson.length - 500));
 
                     // Fallback for demo if parsing fails but we got text
+                    requestCompleted = true;
+                    researchedFormId.current = sessionKey; // Mark as completed (even with fallback)
                     setResearchResults({
                         title: `Research Report: ${formSchema?.researchTopic}`,
                         summary: finalJson.replace(/```json/g, '').replace(/```/g, '').trim().substring(0, 1000) + '...',
@@ -398,9 +502,11 @@ export function Researching() {
                 // Check for abort - don't show error if request was intentionally cancelled
                 if (error instanceof DOMException && error.name === 'AbortError') {
                     console.log('[CLIENT] Request aborted (expected during unmount)');
+                    // Reset tracking so next mount can try again
+                    researchedFormId.current = null;
                     return;
                 }
-                if (isCancelled) {
+                if (requestCompleted) {
                     console.log('[CLIENT] Request cancelled');
                     return;
                 }
@@ -433,7 +539,10 @@ export function Researching() {
 
         return () => {
             console.log('[CLIENT] Cleanup - aborting request for form:', currentFormId);
-            isCancelled = true;
+            // Only reset tracking if request didn't complete successfully
+            if (!requestCompleted) {
+                researchedFormId.current = null;
+            }
             abortController.abort(); // Cancel in-flight fetch
             clearInterval(timer);
         };

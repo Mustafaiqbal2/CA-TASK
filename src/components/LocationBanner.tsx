@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import styles from './LocationBanner.module.css';
 
 type LocationData = {
@@ -162,16 +163,52 @@ export function LocationBanner() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const [mounted, setMounted] = useState(false);
   
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const dropdownContentRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   
   const debouncedQuery = useDebounce(searchQuery, 300);
 
-  // Close dropdown when clicking outside
+  // Track mounted state for portal
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Detect mobile viewport
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Lock body scroll when dropdown is open on mobile
+  useEffect(() => {
+    if (isOpen && isMobile) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = '';
+      };
+    }
+  }, [isOpen, isMobile]);
+
+  // Close dropdown when clicking outside (desktop only - mobile uses overlay)
+  useEffect(() => {
+    // Skip click outside handling on mobile - the overlay handles it
+    if (isMobile) return;
+    
     function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      // Check if click is outside both the banner and the dropdown content
+      const isOutsideBanner = dropdownRef.current && !dropdownRef.current.contains(target);
+      const isOutsideDropdown = dropdownContentRef.current && !dropdownContentRef.current.contains(target);
+      
+      if (isOutsideBanner && isOutsideDropdown) {
         setIsOpen(false);
         setSearchQuery('');
         setSearchResults([]);
@@ -180,7 +217,7 @@ export function LocationBanner() {
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isMobile]);
 
   // Focus search input when dropdown opens
   useEffect(() => {
@@ -294,161 +331,181 @@ export function LocationBanner() {
 
       {isOpen && (
         <>
-          {/* Mobile overlay backdrop */}
-          <div 
-            className={styles.mobileOverlay} 
-            onClick={closeDropdown}
-            aria-hidden="true"
-          />
-          <div className={styles.dropdown} role="dialog" aria-modal="true" aria-label="Select location">
-            {/* Mobile Header with close button */}
-            <div className={styles.mobileHeader}>
-              <span className={styles.mobileTitle}>Select Location</span>
-              <button 
-                className={styles.mobileCloseButton}
-                onClick={closeDropdown}
-                aria-label="Close"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            
-            {/* Search Header */}
-            <div className={styles.searchHeader}>
-              <div className={styles.searchInputWrapper}>
-                <svg className={styles.searchIcon} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="11" cy="11" r="8" />
-                  <path d="M21 21l-4.35-4.35" />
-                </svg>
-                <input
-                  ref={searchRef}
-                  type="text"
-                  placeholder="Search any city worldwide..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className={styles.searchInput}
-                  autoComplete="off"
-                  autoCorrect="off"
-                  spellCheck={false}
+          {/* Dropdown content - rendered via portal on mobile for proper z-index handling */}
+          {(() => {
+            const dropdownContent = (
+              <>
+                {/* Mobile overlay backdrop */}
+                <div 
+                  className={styles.mobileOverlay} 
+                  onClick={closeDropdown}
+                  aria-hidden="true"
                 />
-                {searchQuery && (
-                  <button 
-                    className={styles.clearButton}
-                    onClick={() => {
-                      setSearchQuery('');
-                      setSearchResults([]);
-                      searchRef.current?.focus();
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M18 6L6 18M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Quick Actions */}
-            <div className={styles.quickActions}>
-              <button 
-                className={styles.quickAction}
-                onClick={handleAutoDetect}
-                disabled={isLoading}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M12 2v2m0 16v2M2 12h2m16 0h2" />
-                  <path d="M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41" />
-                </svg>
-                <span>Auto-detect location</span>
-                {isLoading && <span className={styles.loadingDots}>...</span>}
-              </button>
-              <button 
-                className={`${styles.quickAction} ${location?.city === 'Global' ? styles.selected : ''}`}
-                onClick={handleSetGlobal}
-              >
-                <span>🌍</span>
-                <span>Global (no specific location)</span>
-              </button>
-            </div>
-
-            {/* Error Message */}
-            {(error || searchError) && (
-              <div className={styles.errorMessage}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M12 8v4m0 4h.01" />
-                </svg>
-                <span>{error || searchError}</span>
-              </div>
-            )}
-
-            {/* Search Results */}
-            <div className={styles.resultsContainer}>
-              {isSearching && (
-                <div className={styles.searchingState}>
-                  <span className={styles.loadingSpinner} />
-                  <span>Searching...</span>
-                </div>
-              )}
-
-              {!isSearching && searchQuery.length >= 2 && searchResults.length === 0 && (
-                <div className={styles.noResults}>
-                  <span>No cities found for &ldquo;{searchQuery}&rdquo;</span>
-                  <span className={styles.noResultsHint}>Try a different spelling or nearby city</span>
-                </div>
-              )}
-
-              {!isSearching && searchResults.length > 0 && (
-                <div className={styles.resultsList}>
-                  {searchResults.map((result) => (
-                    <button
-                      key={result.id}
-                      className={styles.resultItem}
-                      onClick={() => handleSelectLocation(result)}
+                <div 
+                  ref={dropdownContentRef}
+                  className={styles.dropdown} 
+                  role="dialog" 
+                  aria-modal="true" 
+                  aria-label="Select location"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Mobile Header with close button */}
+                  <div className={styles.mobileHeader}>
+                    <span className={styles.mobileTitle}>Select Location</span>
+                    <button 
+                      className={styles.mobileCloseButton}
+                      onClick={closeDropdown}
+                      aria-label="Close"
                     >
-                      <div className={styles.resultIcon}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M18 6L6 18M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  {/* Search Header */}
+                  <div className={styles.searchHeader}>
+                    <div className={styles.searchInputWrapper}>
+                      <svg className={styles.searchIcon} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="11" cy="11" r="8" />
+                        <path d="M21 21l-4.35-4.35" />
+                      </svg>
+                      <input
+                        ref={searchRef}
+                        type="text"
+                        placeholder="Search any city worldwide..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className={styles.searchInput}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        spellCheck={false}
+                      />
+                      {searchQuery && (
+                        <button 
+                          className={styles.clearButton}
+                          onClick={() => {
+                            setSearchQuery('');
+                            setSearchResults([]);
+                            searchRef.current?.focus();
+                          }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 6L6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Quick Actions */}
+                  <div className={styles.quickActions}>
+                    <button 
+                      className={styles.quickAction}
+                      onClick={handleAutoDetect}
+                      disabled={isLoading}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="3" />
+                        <path d="M12 2v2m0 16v2M2 12h2m16 0h2" />
+                        <path d="M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41" />
+                      </svg>
+                      <span>Auto-detect location</span>
+                      {isLoading && <span className={styles.loadingDots}>...</span>}
+                    </button>
+                    <button 
+                      className={`${styles.quickAction} ${location?.city === 'Global' ? styles.selected : ''}`}
+                      onClick={handleSetGlobal}
+                    >
+                      <span>🌍</span>
+                      <span>Global (no specific location)</span>
+                    </button>
+                  </div>
+
+                  {/* Error Message */}
+                  {(error || searchError) && (
+                    <div className={styles.errorMessage}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 8v4m0 4h.01" />
+                      </svg>
+                      <span>{error || searchError}</span>
+                    </div>
+                  )}
+
+                  {/* Search Results */}
+                  <div className={styles.resultsContainer}>
+                    {isSearching && (
+                      <div className={styles.searchingState}>
+                        <span className={styles.loadingSpinner} />
+                        <span>Searching...</span>
+                      </div>
+                    )}
+
+                    {!isSearching && searchQuery.length >= 2 && searchResults.length === 0 && (
+                      <div className={styles.noResults}>
+                        <span>No cities found for &ldquo;{searchQuery}&rdquo;</span>
+                        <span className={styles.noResultsHint}>Try a different spelling or nearby city</span>
+                      </div>
+                    )}
+
+                    {!isSearching && searchResults.length > 0 && (
+                      <div className={styles.resultsList}>
+                        {searchResults.map((result) => (
+                          <button
+                            key={result.id}
+                            className={styles.resultItem}
+                            onClick={() => handleSelectLocation(result)}
+                          >
+                            <div className={styles.resultIcon}>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                                <circle cx="12" cy="10" r="3" />
+                              </svg>
+                            </div>
+                            <div className={styles.resultContent}>
+                              <span className={styles.resultCity}>
+                                {result.city || result.region}
+                              </span>
+                              <span className={styles.resultDetails}>
+                                {[result.region, result.country].filter(Boolean).join(', ')}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {!searchQuery && !isSearching && (
+                      <div className={styles.searchHint}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                           <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
                           <circle cx="12" cy="10" r="3" />
                         </svg>
+                        <span>Start typing to search for any city</span>
                       </div>
-                      <div className={styles.resultContent}>
-                        <span className={styles.resultCity}>
-                          {result.city || result.region}
-                        </span>
-                        <span className={styles.resultDetails}>
-                          {[result.region, result.country].filter(Boolean).join(', ')}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
+                    )}
+                  </div>
 
-              {!searchQuery && !isSearching && (
-                <div className={styles.searchHint}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                    <circle cx="12" cy="10" r="3" />
-                  </svg>
-                  <span>Start typing to search for any city</span>
+                  {/* Current Location Display */}
+                  {location && location.city !== 'Unknown' && (
+                    <div className={styles.currentLocation}>
+                      <span className={styles.currentLabel}>Current:</span>
+                      <span className={styles.currentValue}>
+                        {location.city === 'Global' ? '🌍 Global' : `📍 ${location.city}, ${location.country}`}
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            );
 
-            {/* Current Location Display */}
-            {location && location.city !== 'Unknown' && (
-              <div className={styles.currentLocation}>
-                <span className={styles.currentLabel}>Current:</span>
-                <span className={styles.currentValue}>
-                  {location.city === 'Global' ? '🌍 Global' : `📍 ${location.city}, ${location.country}`}
-                </span>
-              </div>
-            )}
-          </div>
+            // Use portal on mobile to escape overflow:hidden containers
+            if (isMobile && mounted) {
+              return ReactDOM.createPortal(dropdownContent, document.body);
+            }
+            return dropdownContent;
+          })()}
         </>
       )}
     </div>

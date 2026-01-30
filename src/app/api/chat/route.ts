@@ -90,29 +90,37 @@ When you have enough information (usually after 3-5 exchanges), generate a form 
 }
 \`\`\`
 
-### Pre-filled Fields from Interview
+### Pre-filled Fields from Interview - AVOID WHEN POSSIBLE
 
-When you know information from the interview, add it as \`prefilledFromInterview\` on the field:
-- If user said "I have 5 team members", create field with: \`"prefilledFromInterview": {"value": 5, "source": "User mentioned they have 5 team members"}\`
-- These fields will be pre-populated and shown as context to the user
-- You can SKIP fields entirely if the information is already captured - just include it in \`interviewContext\`
+**PREFERRED APPROACH**: Do NOT create form fields for information already gathered in the interview. Instead:
+1. Put the known information in \`interviewContext\`
+2. Only create NEW fields that ask for information you DON'T have
+
+**ONLY use \`prefilledFromInterview\` when**:
+- You need the user to CONFIRM or REFINE a vague answer
+- The field has additional options beyond what they mentioned
+
+**DO NOT create pre-filled fields just to show what you know** - that's redundant and wastes the user's time!
 
 ### Example:
 User: "I need a project management tool for my team of 5, we use Slack and GitHub"
 
-Your form should include:
-- \`interviewContext\`: {"team_size": {"value": 5, "source": "User mentioned team of 5"}, "integrations": {"value": ["Slack", "GitHub"], "source": "User uses Slack and GitHub"}}
-- No "How many team members?" field (already known!)
-- No "What integrations do you need?" field (already known!)
-- **Field 1**: "Do you need Time Tracking features?" (New question)
-- **Field 2**: "Do you need Gantt Charts or Kanban boards?" (New question)
-- **Field 3**: "Are there specific reporting requirements?" (New question)
+**WRONG** (creates redundant pre-filled fields):
+- Field: "How many team members?" with prefilledFromInterview: 5 ❌
+- Field: "What integrations?" with prefilledFromInterview: ["Slack", "GitHub"] ❌
+
+**CORRECT** (skips known info, asks new questions):
+- \`interviewContext\`: {"team_size": {"value": 5, "source": "..."}, "integrations": {"value": ["Slack", "GitHub"], "source": "..."}}
+- Field 1: "Do you need Time Tracking?" ✅ (NEW question)
+- Field 2: "Kanban or Gantt preference?" ✅ (NEW question)
+- Field 3: "Mobile app required?" ✅ (NEW question)
 
 ## Form Content Rules
 
-1. **NO REDUNDANCY**: Do NOT create fields for info the user already gave. Put that in \`interviewContext\`.
-2. **DIG DEEPER**: If basics are known, ask about specifics: Features, Compliance, Self-hosting, API access, Support level, etc.
-3. **NEVER EMPTY**: The form MUST have at least 5 fields but aim acordingly with the amount of information you have. If the topic of research is broacd add more questions if the topic is shallow don't add too many questions. If you think you know everything, you are wrong. Ask about "Nice-to-haves", "UI preferences", "Mobile app requirement", etc.
+1. **NO REDUNDANCY**: Do NOT create fields for info the user already gave. Put that in \`interviewContext\` ONLY.
+2. **NO PRE-FILLED DISPLAY FIELDS**: Don't create fields just to show pre-filled values. That's what interviewContext is for.
+3. **DIG DEEPER**: If basics are known, ask about NEW specifics: Features, Compliance, Self-hosting, API access, Support level, etc.
+4. **NEVER EMPTY**: The form MUST have at least 5 fields but aim acordingly with the amount of information you have. If the topic of research is broacd add more questions if the topic is shallow don't add too many questions. If you think you know everything, you are wrong. Ask about "Nice-to-haves", "UI preferences", "Mobile app requirement", etc.
 
 ## Field Types to Use:
 - text: Short answers

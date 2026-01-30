@@ -208,20 +208,112 @@ function renderFormattedText(text: string): React.ReactNode {
     });
 }
 
-// Helper for inline formatting (bold, italic, code)
+// URL validation helper - checks if a URL is valid and not a placeholder
+function isValidUrl(url: string): boolean {
+    if (!url || typeof url !== 'string') return false;
+    
+    // Reject placeholder/fake URLs
+    const invalidPatterns = [
+        /example\.com/i,
+        /placeholder/i,
+        /yourdomain/i,
+        /fake/i,
+        /test\.com/i,
+        /localhost/i,
+        /127\.0\.0\.1/i,
+        /\[.*\]/,  // [brackets]
+        /\{.*\}/,  // {braces}
+        /#$/,      // Just a hash
+        /^#/,      // Starts with hash only
+        /javascript:/i,
+        /data:/i,
+    ];
+    
+    if (invalidPatterns.some(pattern => pattern.test(url))) {
+        return false;
+    }
+    
+    try {
+        const parsed = new URL(url);
+        // Must be http or https
+        if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+        // Must have a valid hostname with at least one dot (except localhost which we already filtered)
+        if (!parsed.hostname.includes('.')) return false;
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+// Helper for inline formatting (bold, italic, code, links)
 function renderInlineFormatting(text: string): React.ReactNode {
+    // First, handle markdown links [text](url)
+    // We need to process links first, then other formatting on the non-link parts
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    const elements: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match;
+    let keyCounter = 0;
+    
+    while ((match = linkRegex.exec(text)) !== null) {
+        // Add text before this link
+        if (match.index > lastIndex) {
+            const beforeText = text.slice(lastIndex, match.index);
+            elements.push(...renderBasicFormatting(beforeText, keyCounter));
+            keyCounter += 100; // Leave room for keys
+        }
+        
+        const linkText = match[1];
+        const linkUrl = match[2];
+        
+        // Validate the URL before rendering as link
+        if (isValidUrl(linkUrl)) {
+            elements.push(
+                <a 
+                    key={`link-${keyCounter++}`}
+                    href={linkUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.inlineLink}
+                >
+                    {linkText}
+                </a>
+            );
+        } else {
+            // Invalid URL - just show the text without making it a link
+            elements.push(<span key={`text-${keyCounter++}`}>{linkText}</span>);
+        }
+        
+        lastIndex = match.index + match[0].length;
+    }
+    
+    // Add remaining text after last link
+    if (lastIndex < text.length) {
+        elements.push(...renderBasicFormatting(text.slice(lastIndex), keyCounter));
+    }
+    
+    // If no links were found, process the whole text
+    if (elements.length === 0) {
+        return renderBasicFormatting(text, 0);
+    }
+    
+    return elements;
+}
+
+// Helper for basic formatting (bold, italic, code) - used after link extraction
+function renderBasicFormatting(text: string, startKey: number): React.ReactNode[] {
     const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g);
     return parts.map((part, i) => {
         if (part.startsWith('**') && part.endsWith('**')) {
-            return <strong key={i}>{part.slice(2, -2)}</strong>;
+            return <strong key={startKey + i}>{part.slice(2, -2)}</strong>;
         }
         if (part.startsWith('`') && part.endsWith('`')) {
-            return <code key={i} className={styles.mdCode}>{part.slice(1, -1)}</code>;
+            return <code key={startKey + i} className={styles.mdCode}>{part.slice(1, -1)}</code>;
         }
         if (part.startsWith('*') && part.endsWith('*') && !part.startsWith('**')) {
-            return <em key={i}>{part.slice(1, -1)}</em>;
+            return <em key={startKey + i}>{part.slice(1, -1)}</em>;
         }
-        return part;
+        return <span key={startKey + i}>{part}</span>;
     });
 }
 
@@ -597,21 +689,21 @@ function SectionRenderer({ section }: SectionRendererProps) {
             case 'warning':
                 return (
                     <div className={`${styles.card} ${styles.riskCard}`}>
-                        <p className={styles.riskText}>{renderFormattedText(String(content || ''))}</p>
+                        <div className={styles.riskText}>{renderFormattedText(String(content || ''))}</div>
                     </div>
                 );
                 
             case 'info':
                 return (
                     <div className={`${styles.card} ${styles.infoCard}`}>
-                        <p className={styles.infoText}>{renderFormattedText(String(content || ''))}</p>
+                        <div className={styles.infoText}>{renderFormattedText(String(content || ''))}</div>
                     </div>
                 );
                 
             case 'success':
                 return (
                     <div className={`${styles.card} ${styles.successCard}`}>
-                        <p className={styles.successText}>{renderFormattedText(String(content || ''))}</p>
+                        <div className={styles.successText}>{renderFormattedText(String(content || ''))}</div>
                     </div>
                 );
                 
@@ -691,7 +783,7 @@ function SectionRenderer({ section }: SectionRendererProps) {
                 }
                 return (
                     <div className={styles.card}>
-                        <p>{renderFormattedText(String(content || ''))}</p>
+                        <div>{renderFormattedText(String(content || ''))}</div>
                     </div>
                 );
         }
@@ -1095,7 +1187,7 @@ export function ResearchResults() {
                         {keyFindings.map((finding, idx) => (
                             <div key={idx} className={styles.findingCard} style={{ animationDelay: `${idx * 0.05}s` }}>
                                 <span className={styles.findingNumber}>{idx + 1}</span>
-                                <p>{renderFormattedText(finding)}</p>
+                                <div>{renderFormattedText(finding)}</div>
                             </div>
                         ))}
                     </div>
@@ -1394,11 +1486,11 @@ export function ResearchResults() {
                     </div>
                 )}
 
-                {/* Sources */}
+                {/* Sources - filter out invalid URLs */}
                 <section className={styles.section}>
                     <h2 className={styles.sectionTitle}>Sources & References</h2>
                     <div className={styles.sourcesList}>
-                        {sources.map((source, idx) => (
+                        {sources.filter(source => isValidUrl(source.url)).map((source, idx) => (
                             <a
                                 key={idx}
                                 href={source.url}
@@ -1414,6 +1506,9 @@ export function ResearchResults() {
                                 <ExternalLinkIcon />
                             </a>
                         ))}
+                        {sources.filter(source => isValidUrl(source.url)).length === 0 && (
+                            <p className={styles.noSources}>No valid sources available for this research.</p>
+                        )}
                     </div>
                 </section>
 
