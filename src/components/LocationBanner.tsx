@@ -159,6 +159,7 @@ function useDebounce<T>(value: T, delay: number): T {
 export function LocationBanner() {
   const { location, isLoading, error, setLocation, detectLocation } = useLocation();
   const [isOpen, setIsOpen] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -294,10 +295,23 @@ export function LocationBanner() {
   }, [setLocation]);
 
   const closeDropdown = useCallback(() => {
-    setIsOpen(false);
-    setSearchQuery('');
-    setSearchResults([]);
-  }, []);
+    if (isMobile) {
+      // Trigger closing animation on mobile
+      setIsClosing(true);
+      // Wait for animation to complete before actually closing
+      setTimeout(() => {
+        setIsOpen(false);
+        setIsClosing(false);
+        setSearchQuery('');
+        setSearchResults([]);
+      }, 250); // Match the CSS animation duration
+    } else {
+      // Instant close on desktop
+      setIsOpen(false);
+      setSearchQuery('');
+      setSearchResults([]);
+    }
+  }, [isMobile]);
 
   // Determine display text
   const getDisplayText = () => {
@@ -337,13 +351,13 @@ export function LocationBanner() {
               <>
                 {/* Mobile overlay backdrop */}
                 <div 
-                  className={styles.mobileOverlay} 
+                  className={`${styles.mobileOverlay} ${isClosing ? styles.closing : ''}`} 
                   onClick={closeDropdown}
                   aria-hidden="true"
                 />
                 <div 
                   ref={dropdownContentRef}
-                  className={styles.dropdown} 
+                  className={`${styles.dropdown} ${isClosing ? styles.closing : ''}`} 
                   role="dialog" 
                   aria-modal="true" 
                   aria-label="Select location"

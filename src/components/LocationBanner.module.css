@@ -417,13 +417,22 @@
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
         z-index: 9998;
-        animation: fadeIn 0.2s ease-out;
+        animation: fadeIn 0.2s ease-out forwards;
         touch-action: none;
+    }
+
+    .mobileOverlay.closing {
+        animation: fadeOut 0.25s ease-out forwards;
     }
 
     @keyframes fadeIn {
         from { opacity: 0; }
         to { opacity: 1; }
+    }
+
+    @keyframes fadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
     }
 
     .dropdown {
@@ -435,10 +444,14 @@
         width: 100%;
         max-height: 90vh;
         border-radius: 24px 24px 0 0;
-        animation: dropdownSlideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+        animation: dropdownSlideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards;
         z-index: 9999;
         box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
         padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    .dropdown.closing {
+        animation: dropdownSlideDown 0.25s cubic-bezier(0.32, 0.72, 0, 1) forwards;
     }
 
     @keyframes dropdownSlideUp {
@@ -452,6 +465,17 @@
         }
     }
 
+    @keyframes dropdownSlideDown {
+        from {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        to {
+            opacity: 0;
+            transform: translateY(100%);
+        }
+    }
+
     /* Mobile header with title and close */
     .mobileHeader {
         display: flex;
@@ -461,17 +485,7 @@
         border-bottom: 1px solid var(--glass-border);
     }
 
-    .mobileHeader::before {
-        content: '';
-        position: absolute;
-        top: 8px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 36px;
-        height: 4px;
-        background: rgba(255, 255, 255, 0.3);
-        border-radius: 2px;
-    }
+    /* Removed the drag handle bar - it implied swipe-to-dismiss which isn't implemented */
 
     .mobileTitle {
         font-size: 16px;

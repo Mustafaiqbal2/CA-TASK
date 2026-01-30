@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useAppStore, FormSchema, FormField } from '@/lib/state-machine';
 import { evaluateConditionGroup, validateField as validateFieldSchema } from '@/lib/form-schema';
 import styles from './FormActive.module.css';
@@ -18,6 +18,12 @@ const ChevronRight = () => (
     </svg>
 );
 
+const ChevronDown = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M6 9l6 6 6-6" />
+    </svg>
+);
+
 const CheckIcon = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <polyline points="20,6 9,17 4,12" />
@@ -30,6 +36,115 @@ const SparkleIcon = () => (
     </svg>
 );
 
+// Helper to check if an option is "Other" type
+const isOtherOption = (value: string): boolean => {
+    const lowerValue = value.toLowerCase();
+    return lowerValue === 'other' || 
+           lowerValue.includes('other') || 
+           lowerValue.includes('specify') ||
+           lowerValue.includes('custom');
+};
+
+// Custom Select Dropdown Component
+interface CustomSelectProps {
+    value: string;
+    onChange: (value: string) => void;
+    onBlur?: () => void;
+    options: { value: string; label: string }[];
+    placeholder: string;
+    error?: boolean;
+    otherValue?: string;
+    onOtherChange?: (value: string) => void;
+}
+
+const CustomSelect: React.FC<CustomSelectProps> = ({
+    value,
+    onChange,
+    onBlur,
+    options,
+    placeholder,
+    error,
+    otherValue,
+    onOtherChange
+}) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+                onBlur?.();
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [onBlur]);
+
+    const selectedOption = options.find(opt => opt.value === value);
+    const showOtherInput = value && isOtherOption(value);
+
+    return (
+        <div className={styles.customSelectWrapper}>
+            <div 
+                ref={dropdownRef}
+                className={`${styles.customSelect} ${isOpen ? styles.customSelectOpen : ''} ${error ? styles.inputError : ''}`}
+            >
+                <button
+                    type="button"
+                    className={styles.customSelectTrigger}
+                    onClick={() => setIsOpen(!isOpen)}
+                    aria-expanded={isOpen}
+                >
+                    <span className={value ? styles.customSelectValue : styles.customSelectPlaceholder}>
+                        {selectedOption?.label || placeholder}
+                    </span>
+                    <span className={`${styles.customSelectIcon} ${isOpen ? styles.customSelectIconOpen : ''}`}>
+                        <ChevronDown />
+                    </span>
+                </button>
+                
+                {isOpen && (
+                    <div className={styles.customSelectDropdown}>
+                        <div className={styles.customSelectOptions}>
+                            {options.map((opt) => (
+                                <button
+                                    key={opt.value}
+                                    type="button"
+                                    className={`${styles.customSelectOption} ${value === opt.value ? styles.customSelectOptionSelected : ''}`}
+                                    onClick={() => {
+                                        onChange(opt.value);
+                                        setIsOpen(false);
+                                    }}
+                                >
+                                    <span>{opt.label}</span>
+                                    {value === opt.value && (
+                                        <span className={styles.customSelectCheck}>
+                                            <CheckIcon />
+                                        </span>
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+            
+            {showOtherInput && (
+                <input
+                    type="text"
+                    value={otherValue || ''}
+                    onChange={(e) => onOtherChange?.(e.target.value)}
+                    placeholder="Please specify..."
+                    className={styles.otherInput}
+                    autoFocus
+                />
+            )}
+        </div>
+    );
+};
+
 interface FormActiveProps {
     formSchema: FormSchema;
 }
@@ -41,6 +156,11 @@ type ResearchDepth = 'standard' | 'deep';
 
 export function FormActive({ formSchema }: FormActiveProps) {
     const { transition, setFormData, formData: storedFormData } = useAppStore();
+
+    // Scroll to top when component mounts
+    useEffect(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, []);
 
     // Research depth selection
     const [researchDepth, setResearchDepth] = useState<ResearchDepth>('standard');
@@ -65,6 +185,8 @@ export function FormActive({ formSchema }: FormActiveProps) {
     const [errors, setErrors] = useState<FormErrors>({});
     const [currentStep, setCurrentStep] = useState(0);
     const [touched, setTouched] = useState<Record<string, boolean>>({});
+    // Store "Other" specification text for select/multiselect fields
+    const [otherValues, setOtherValues] = useState<Record<string, string>>({});
 
     // Evaluate visibility conditions for a field
     const evaluateCondition = useCallback((field: FormField): boolean => {
@@ -155,6 +277,10 @@ export function FormActive({ formSchema }: FormActiveProps) {
                 handleSubmit();
             } else {
                 setCurrentStep(prev => prev + 1);
+                // Scroll to top after state update completes
+                setTimeout(() => {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }, 50);
             }
         }
     };
@@ -162,6 +288,10 @@ export function FormActive({ formSchema }: FormActiveProps) {
     const handleBack = () => {
         if (currentStep > 0) {
             setCurrentStep(prev => prev - 1);
+            // Scroll to top after state update completes
+            setTimeout(() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 50);
         } else {
             transition('FORM_PREVIEW', 'back_to_preview');
         }
@@ -187,9 +317,18 @@ export function FormActive({ formSchema }: FormActiveProps) {
         }
 
         // Save form data with research depth and transition
+        // Include "other" specification values for fields that have them
+        const otherFieldsData: Record<string, string> = {};
+        Object.entries(otherValues).forEach(([fieldId, otherText]) => {
+            if (otherText) {
+                otherFieldsData[`${fieldId}_other`] = otherText;
+            }
+        });
+
         // Cast FormValues to match FormData type (including undefined)
         setFormData({ 
             ...values, 
+            ...otherFieldsData,
             researchDepth 
         } as Record<string, string | number | boolean | string[] | undefined>);
         transition('RESEARCHING', 'form_submitted');
@@ -417,27 +556,25 @@ function FormFieldInput({ field, value, error, onChange, onBlur, index, isPrefil
 
             case 'select':
                 return (
-                    <select
+                    <CustomSelect
                         value={(value as string) || ''}
-                        onChange={(e) => onChange(e.target.value)}
+                        onChange={onChange}
                         onBlur={onBlur}
-                        className={`${styles.select} ${error ? styles.inputError : ''}`}
-                    >
-                        <option value="">Select {field.label.toLowerCase()}</option>
-                        {field.options?.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                            </option>
-                        ))}
-                    </select>
+                        options={field.options || []}
+                        placeholder={`Select ${field.label.toLowerCase()}`}
+                        error={!!error}
+                        otherValue={otherValues[field.id]}
+                        onOtherChange={(val) => setOtherValues(prev => ({ ...prev, [field.id]: val }))}
+                    />
                 );
 
             case 'multiselect':
                 const selectedValues = (value as string[]) || [];
+                const hasOtherSelected = selectedValues.some(v => isOtherOption(v));
                 return (
                     <div className={styles.multiselectContainer}>
                         {field.options?.map((opt) => (
-                            <label key={opt.value} className={styles.checkboxLabel}>
+                            <label key={opt.value} className={`${styles.checkboxLabel} ${selectedValues.includes(opt.value) ? styles.checkboxLabelSelected : ''}`}>
                                 <input
                                     type="checkbox"
                                     checked={selectedValues.includes(opt.value)}
@@ -446,6 +583,14 @@ function FormFieldInput({ field, value, error, onChange, onBlur, index, isPrefil
                                             onChange([...selectedValues, opt.value]);
                                         } else {
                                             onChange(selectedValues.filter((v) => v !== opt.value));
+                                            // Clear other value if unchecking "other"
+                                            if (isOtherOption(opt.value)) {
+                                                setOtherValues(prev => {
+                                                    const next = { ...prev };
+                                                    delete next[field.id];
+                                                    return next;
+                                                });
+                                            }
                                         }
                                     }}
                                     className={styles.checkbox}
@@ -456,6 +601,16 @@ function FormFieldInput({ field, value, error, onChange, onBlur, index, isPrefil
                                 <span>{opt.label}</span>
                             </label>
                         ))}
+                        {hasOtherSelected && (
+                            <input
+                                type="text"
+                                value={otherValues[field.id] || ''}
+                                onChange={(e) => setOtherValues(prev => ({ ...prev, [field.id]: e.target.value }))}
+                                placeholder="Please specify..."
+                                className={styles.otherInput}
+                                autoFocus
+                            />
+                        )}
                     </div>
                 );
 

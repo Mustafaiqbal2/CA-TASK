@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAppStore } from '@/lib/state-machine';
 import { generatePDF } from '@/lib/pdf-export';
 import { useToast } from '@/components/Toast';
@@ -447,7 +447,18 @@ function SectionRenderer({ section }: SectionRendererProps) {
                 );
                 
             case 'comparison':
-                const comparisonData = Array.isArray(content) ? content : [content];
+                const comparisonRaw = Array.isArray(content) ? content : [content];
+                // Parse JSON strings if entries are stringified objects
+                const comparisonData = comparisonRaw.map((entry: any) => {
+                    if (typeof entry === 'string') {
+                        try {
+                            return JSON.parse(entry);
+                        } catch {
+                            return { option: entry };
+                        }
+                    }
+                    return entry;
+                });
                 return (
                     <div className={styles.comparisonMatrixContainer}>
                         <div className={styles.comparisonMatrix}>
@@ -588,6 +599,22 @@ function SectionRenderer({ section }: SectionRendererProps) {
                 
             case 'steps':
                 const stepsData = content as Record<string, any>;
+                // Helper to ensure we have an array (handle comma-separated strings)
+                const ensureArray = (val: any): string[] => {
+                    if (Array.isArray(val)) return val;
+                    if (typeof val === 'string') {
+                        // Split by numbered items (1., 2., etc.) or commas
+                        if (/^\d+\.\s/.test(val)) {
+                            return val.split(/(?=\d+\.\s)/).filter(s => s.trim());
+                        }
+                        return val.split(',').map(s => s.trim()).filter(Boolean);
+                    }
+                    return [];
+                };
+                const prereqs = ensureArray(stepsData.prerequisites);
+                const stepsList = ensureArray(stepsData.steps);
+                const integrationPoints = ensureArray(stepsData.integrationPoints);
+                
                 return (
                     <div className={styles.implementationCard}>
                         {stepsData.complexity && (
@@ -600,31 +627,31 @@ function SectionRenderer({ section }: SectionRendererProps) {
                                 )}
                             </div>
                         )}
-                        {stepsData.prerequisites && stepsData.prerequisites.length > 0 && (
+                        {prereqs.length > 0 && (
                             <div className={styles.implementationSection}>
                                 <h4>Prerequisites</h4>
                                 <ul>
-                                    {stepsData.prerequisites.map((req: string, idx: number) => (
+                                    {prereqs.map((req: string, idx: number) => (
                                         <li key={idx}>{req}</li>
                                     ))}
                                 </ul>
                             </div>
                         )}
-                        {stepsData.steps && stepsData.steps.length > 0 && (
+                        {stepsList.length > 0 && (
                             <div className={styles.implementationSection}>
                                 <h4>Steps</h4>
                                 <ol className={styles.dynamicNumberedList}>
-                                    {stepsData.steps.map((step: string, idx: number) => (
-                                        <li key={idx}>{renderFormattedText(step)}</li>
+                                    {stepsList.map((step: string, idx: number) => (
+                                        <li key={idx}>{renderFormattedText(step.replace(/^\d+\.\s*/, ''))}</li>
                                     ))}
                                 </ol>
                             </div>
                         )}
-                        {stepsData.integrationPoints && stepsData.integrationPoints.length > 0 && (
+                        {integrationPoints.length > 0 && (
                             <div className={styles.implementationSection}>
                                 <h4>Integration Points</h4>
                                 <div className={styles.integrationTags}>
-                                    {stepsData.integrationPoints.map((point: string, idx: number) => (
+                                    {integrationPoints.map((point: string, idx: number) => (
                                         <span key={idx} className={styles.integrationTag}>{point}</span>
                                     ))}
                                 </div>
@@ -763,6 +790,33 @@ function SectionRenderer({ section }: SectionRendererProps) {
                     );
                 }
                 if (typeof content === 'object' && content !== null) {
+                    // Helper to render any value (handles nested objects)
+                    const renderValue = (value: any): React.ReactNode => {
+                        if (value === null || value === undefined) return '';
+                        if (Array.isArray(value)) {
+                            return value.map((v, i) => (
+                                <span key={i}>
+                                    {typeof v === 'object' ? renderValue(v) : String(v)}
+                                    {i < value.length - 1 ? ', ' : ''}
+                                </span>
+                            ));
+                        }
+                        if (typeof value === 'object') {
+                            // Render nested object as inline key-value pairs
+                            return (
+                                <span className={styles.nestedObject}>
+                                    {Object.entries(value).map(([k, v], i, arr) => (
+                                        <span key={k}>
+                                            <strong>{k}:</strong> {typeof v === 'object' ? renderValue(v) : String(v)}
+                                            {i < arr.length - 1 ? ' • ' : ''}
+                                        </span>
+                                    ))}
+                                </span>
+                            );
+                        }
+                        return String(value);
+                    };
+
                     return (
                         <div className={styles.card}>
                             <dl className={styles.keyValueList}>
@@ -770,10 +824,7 @@ function SectionRenderer({ section }: SectionRendererProps) {
                                     <div key={key} className={styles.keyValueRow}>
                                         <dt className={styles.keyLabel}>{key}</dt>
                                         <dd className={styles.keyValue}>
-                                            {Array.isArray(value) 
-                                                ? value.join(', ')
-                                                : String(value)
-                                            }
+                                            {renderValue(value)}
                                         </dd>
                                     </div>
                                 ))}
@@ -803,6 +854,11 @@ export function ResearchResults() {
     const [isFollowUpOpen, setIsFollowUpOpen] = useState(false);
     const [isFollowUpLoading, setIsFollowUpLoading] = useState(false);
     const [chatHistory, setChatHistory] = useState<Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
+
+    // Scroll to top when component mounts
+    useEffect(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, []);
 
     // Handle research again - go back to form with same data but new form ID
     const handleResearchAgain = useCallback(() => {

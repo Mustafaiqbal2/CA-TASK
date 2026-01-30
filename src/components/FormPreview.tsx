@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useAppStore, FormSchema, FormField } from '@/lib/state-machine';
 import styles from './FormPreview.module.css';
 
@@ -49,6 +50,11 @@ interface FormPreviewProps {
 
 export function FormPreview({ formSchema }: FormPreviewProps) {
     const { transition } = useAppStore();
+
+    // Scroll to top when component mounts
+    useEffect(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, []);
 
     const handleEditWithAI = () => {
         transition('INTERVIEWING', 'edit_form');

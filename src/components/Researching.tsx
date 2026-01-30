@@ -120,6 +120,11 @@ export function Researching() {
     // Track which form ID we've already started researching to prevent duplicates
     const researchedFormId = useRef<string | null>(null);
 
+    // Scroll to top when component mounts
+    useEffect(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, []);
+
     // Auto-scroll logs when new entries are added
     useEffect(() => {
         logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });

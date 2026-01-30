@@ -1548,6 +1548,20 @@
     margin: 0;
 }
 
+/* Nested object rendering */
+.nestedObject {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    align-items: baseline;
+}
+
+.nestedObject strong {
+    color: var(--text-muted);
+    font-weight: var(--font-medium);
+    font-size: var(--text-xs);
+}
+
 /* Info callout card */
 .infoCard {
     background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.05));
