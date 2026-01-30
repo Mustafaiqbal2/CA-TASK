@@ -25,8 +25,15 @@ export async function POST(req: Request) {
         }
 
         const { formId, formData, location } = body;
+        const researchDepth = formData?.researchDepth || 'standard';
+        const isFollowUp = researchDepth === 'followup';
+        const followUpQuery = formData?.followUpQuery || '';
+        const originalContext = formData?.originalContext || '';
+        
         console.log('[3] Form ID:', formId);
         console.log('[4] Location:', location);
+        console.log('[4.1] Research Depth:', researchDepth);
+        if (isFollowUp) console.log('[4.2] Follow-up Query:', followUpQuery);
 
         // Get researcher agent
         console.log('[5] Getting researcher agent...');
@@ -67,7 +74,7 @@ export async function POST(req: Request) {
                     // Parse form data to extract key criteria
                     const requirements: string[] = [];
                     for (const [key, value] of Object.entries(formData)) {
-                        if (value && key !== 'title' && key !== 'description') {
+                        if (value && key !== 'title' && key !== 'description' && key !== 'researchDepth') {
                             // Format the field name nicely
                             const fieldName = key.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim();
                             if (Array.isArray(value)) {
@@ -79,11 +86,56 @@ export async function POST(req: Request) {
                             }
                         }
                     }
+
+                    // Determine maxSteps and timeout based on research depth
+                    const isDeepResearch = researchDepth === 'deep';
+                    const maxSteps = isFollowUp ? 5 : (isDeepResearch ? 25 : 15);
+                    const timeoutMs = isFollowUp ? 45000 : (isDeepResearch ? 300000 : 150000); // 45s for follow-up, 5 min for deep, 2.5 min for standard
                     
-                    const userPrompt = `
+                    // Build prompt based on mode
+                    let userPrompt: string;
+                    
+                    if (isFollowUp) {
+                        // Follow-up mode: Quick, targeted research - MINIMAL searches
+                        userPrompt = `
+## Quick Follow-up Question
+
+**Context from previous research**: 
+${originalContext}
+
+**User Question**: ${followUpQuery}
+
+## IMPORTANT: This is a FAST follow-up
+- Answer using the existing context FIRST before searching
+- Only do 1-2 searches if the answer isn't in the context
+- Be concise but ALWAYS provide a substantive answer
+- If you genuinely can't find information, explain what you know and what's missing
+
+## Output Format (JSON)
+{
+  "title": "Follow-up: [brief topic]",
+  "summary": "A DIRECT, SUBSTANTIVE answer to the question (2-4 paragraphs with specific data/numbers if available). NEVER say 'I couldn't find' without providing what you DO know.",
+  "keyFindings": ["Specific finding 1 with data", "Specific finding 2 with data", "Specific finding 3 if available"],
+  "sources": [{"title": "Source Name", "url": "https://actual-url.com", "snippet": "Relevant quote"}]
+}
+
+## CRITICAL RULES
+- ALWAYS provide a real answer - don't just say "rephrase your question"
+- If the exact data isn't available, provide related data or estimates
+- Include numbers, percentages, or specific facts when possible
+- If the context has the answer, use it directly
+- If you need to search, search for specific statistics or data
+
+Answer the question now:`;
+                    } else {
+                        // Standard/Deep mode
+                        userPrompt = `
 ## Research Request
 
 **Topic**: ${formData.title || formData.researchTopic || 'General Research'}
+
+**RESEARCH_DEPTH**: ${researchDepth.toUpperCase()}
+${isDeepResearch ? '(Execute COMPREHENSIVE research with risk assessment - 20-25 tool calls, explore thoroughly)' : '(Execute THOROUGH research - 12-15 tool calls, cover all angles)'}
 
 **User Location**: ${location?.city || 'Unknown'}, ${location?.country || 'Global'} (use this for regional context, pricing, and availability)
 
@@ -98,32 +150,40 @@ ${requirements.length > 0 ? requirements.join('\n') : 'No specific requirements 
 3. Compare options based on HOW WELL they meet the stated requirements
 4. In your recommendations, explain WHY each suggestion fits the user's criteria
 5. If a popular option does NOT meet the user's requirements, mention it but clearly state why it doesn't fit
+6. Include DETAILED pricing information with tiers and hidden costs
+7. Research user reviews, Reddit discussions, and real-world experiences
+${isDeepResearch ? '8. **DEEP MODE**: Include risk assessment - search for problems, complaints, and failure stories for top candidates\n9. **DEEP MODE**: Search for "problems with [product]", "why I switched from [product]" for each recommendation' : ''}
 
 ## Important
 - Do NOT provide a generic overview of the topic
 - DO find and compare specific options that match the user's stated needs
 - EACH recommendation should reference back to the user's requirements
 - Include pricing that is relevant to the user's location (${location?.country || 'their region'})
+- Include a COMPREHENSIVE comparison matrix with scores on multiple criteria
+- Include implementation steps and considerations
+${isDeepResearch ? '- Include "riskAssessment" section in your output with potential issues found' : ''}
 
 Form Data (raw): ${JSON.stringify(formData)}
 
-Execute the research plan and provide the final JSON report.
-                    `;
+Execute the ${researchDepth.toUpperCase()} research plan. Be THOROUGH - the user is counting on comprehensive research. Provide the final JSON report.
+                        `;
+                    }
                     console.log('[12] User prompt built, length:', userPrompt.length);
 
                     // Call agent with timeout protection
                     console.log('[13] Calling researcher.stream()...');
+                    console.log('[13.1] Max steps:', maxSteps, 'Timeout:', timeoutMs / 1000, 'seconds');
 
-                    // Create a timeout promise (2 minutes for complex research)
+                    // Create a timeout promise based on depth
                     const timeoutPromise = new Promise<never>((_, reject) => {
-                        setTimeout(() => reject(new Error('Agent stream timeout after 120 seconds')), 120000);
+                        setTimeout(() => reject(new Error(`Agent stream timeout after ${timeoutMs / 1000} seconds`)), timeoutMs);
                     });
 
                     let result;
                     try {
                         result = await Promise.race([
                             researcher.stream(userPrompt, {
-                                maxSteps: 10, // Allow more steps for complete research cycle
+                                maxSteps: maxSteps,
                                 onStepFinish: (step) => {
                                     // Check for report in tool results or content
                                     // This is critical if the agent doesn't stream the tool output as text deltas

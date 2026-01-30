@@ -37,8 +37,13 @@ interface FormActiveProps {
 type FormValues = Record<string, string | string[] | number | boolean>;
 type FormErrors = Record<string, string>;
 
+type ResearchDepth = 'standard' | 'deep';
+
 export function FormActive({ formSchema }: FormActiveProps) {
     const { transition, setFormData, formData: storedFormData } = useAppStore();
+
+    // Research depth selection
+    const [researchDepth, setResearchDepth] = useState<ResearchDepth>('standard');
 
     // Initialize with pre-filled data from interview
     const [values, setValues] = useState<FormValues>(() => {
@@ -181,9 +186,12 @@ export function FormActive({ formSchema }: FormActiveProps) {
             return;
         }
 
-        // Save form data and transition
+        // Save form data with research depth and transition
         // Cast FormValues to match FormData type (including undefined)
-        setFormData({ ...values } as Record<string, string | number | boolean | string[] | undefined>);
+        setFormData({ 
+            ...values, 
+            researchDepth 
+        } as Record<string, string | number | boolean | string[] | undefined>);
         transition('RESEARCHING', 'form_submitted');
     };
 
@@ -267,6 +275,55 @@ export function FormActive({ formSchema }: FormActiveProps) {
                         />
                     ))}
                 </div>
+
+                {/* Research Depth Selector - Only show on last step */}
+                {isLastStep && (
+                    <div className={styles.depthSelector}>
+                        <div className={styles.depthHeader}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <circle cx="11" cy="11" r="8" />
+                                <path d="m21 21-4.35-4.35" />
+                            </svg>
+                            <span>Research Depth</span>
+                        </div>
+                        <div className={styles.depthOptions}>
+                            <button
+                                type="button"
+                                className={`${styles.depthOption} ${researchDepth === 'standard' ? styles.depthActive : ''}`}
+                                onClick={() => setResearchDepth('standard')}
+                            >
+                                <div className={styles.depthOptionHeader}>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <circle cx="12" cy="12" r="10" />
+                                        <polyline points="12 6 12 12 16 14" />
+                                    </svg>
+                                    <span>Standard</span>
+                                </div>
+                                <p className={styles.depthDescription}>
+                                    Quick analysis with 8-10 searches. Best for straightforward research needs.
+                                </p>
+                                <span className={styles.depthTime}>~2 minutes</span>
+                            </button>
+                            <button
+                                type="button"
+                                className={`${styles.depthOption} ${researchDepth === 'deep' ? styles.depthActive : ''}`}
+                                onClick={() => setResearchDepth('deep')}
+                            >
+                                <div className={styles.depthOptionHeader}>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                                        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                                    </svg>
+                                    <span>Deep Dive</span>
+                                </div>
+                                <p className={styles.depthDescription}>
+                                    Comprehensive analysis with 15-20 searches including risk assessment.
+                                </p>
+                                <span className={styles.depthTime}>~4 minutes</span>
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {/* Actions */}
                 <div className={styles.actions}>
@@ -422,6 +479,68 @@ function FormFieldInput({ field, value, error, onChange, onBlur, index, isPrefil
                     </div>
                 );
 
+            case 'dealbreaker':
+                // Special boolean with strong visual treatment for critical requirements
+                return (
+                    <div className={styles.dealbreakerContainer}>
+                        <button
+                            type="button"
+                            onClick={() => onChange(true)}
+                            className={`${styles.dealbreakerButton} ${value === true ? styles.dealbreakerYes : ''}`}
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M12 9v2m0 4h.01M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                            </svg>
+                            Required
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onChange(false)}
+                            className={`${styles.dealbreakerButton} ${value === false ? styles.dealbreakerNo : ''}`}
+                        >
+                            Nice to have
+                        </button>
+                    </div>
+                );
+
+            case 'priority':
+                // Ranked list - users can drag to reorder or click to set priority
+                const priorityValues = (value as string[]) || field.options?.map(o => o.value) || [];
+                return (
+                    <div className={styles.priorityContainer}>
+                        <p className={styles.priorityHint}>Drag to reorder by importance (top = most important)</p>
+                        {priorityValues.map((itemValue, idx) => {
+                            const option = field.options?.find(o => o.value === itemValue);
+                            return (
+                                <div 
+                                    key={itemValue} 
+                                    className={styles.priorityItem}
+                                    draggable
+                                    onDragStart={(e) => {
+                                        e.dataTransfer.setData('text/plain', idx.toString());
+                                    }}
+                                    onDragOver={(e) => e.preventDefault()}
+                                    onDrop={(e) => {
+                                        e.preventDefault();
+                                        const fromIdx = parseInt(e.dataTransfer.getData('text/plain'));
+                                        const toIdx = idx;
+                                        if (fromIdx !== toIdx) {
+                                            const newOrder = [...priorityValues];
+                                            const [moved] = newOrder.splice(fromIdx, 1);
+                                            newOrder.splice(toIdx, 0, moved);
+                                            onChange(newOrder);
+                                        }
+                                    }}
+                                >
+                                    <span className={styles.priorityRank}>{idx + 1}</span>
+                                    <span className={styles.priorityLabel}>{option?.label || itemValue}</span>
+                                    <span className={styles.priorityHandle}>⋮⋮</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                );
+
             case 'date':
                 return (
                     <input
@@ -448,12 +567,22 @@ function FormFieldInput({ field, value, error, onChange, onBlur, index, isPrefil
 
     return (
         <div
-            className={`${styles.fieldWrapper} ${isPrefilled ? styles.prefilledField : ''}`}
+            className={`${styles.fieldWrapper} ${isPrefilled ? styles.prefilledField : ''} ${field.isDealbreaker ? styles.dealbreakerField : ''}`}
             style={{ animationDelay }}
         >
             <label className={styles.label}>
                 {field.label}
                 {field.required && <span className={styles.required}>*</span>}
+                {field.isDealbreaker && (
+                    <span className={styles.dealbreakerBadge}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                            <line x1="12" y1="9" x2="12" y2="13" />
+                            <line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
+                        Dealbreaker
+                    </span>
+                )}
                 {isPrefilled && (
                     <span className={styles.prefilledBadge} title={field.prefilledFromInterview?.source}>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

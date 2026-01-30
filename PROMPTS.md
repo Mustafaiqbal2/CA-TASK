@@ -123,151 +123,108 @@ TAVILY_API_KEY=tvly-...      # Tavily API key for web search
 ## Form Builder Agent
 
 **Location:** `src/mastra/agents/form-builder-agent.ts`  
-**Model:** OpenAI GPT-4o  
-**Purpose:** Interview users about research needs and generate customized criteria-gathering forms.
+**Model:** OpenAI GPT-4.1 (smartest non-reasoning model)  
+**Purpose:** Interview users about research needs and generate customized CRITERIA CAPTURE forms.
 
-### System Prompt Design Philosophy
+### Design Philosophy: The Golden Rule
 
-The Form Builder Agent operates on a critical distinction: **Criteria vs. Data**.
+For EVERY form field, ask: **"Does the USER already know the answer to this BEFORE the research is done?"**
 
-| Criteria (What we ASK) | Data (What we FIND) |
-|------------------------|---------------------|
+- ✅ YES → Valid field (budget, priorities, requirements, scenarios, preferences)
+- ❌ NO → INVALID field (tool features, pricing tiers, comparisons, evaluations)
+
+### Critical Distinction: Criteria vs. Data
+
+| Criteria (What USER Knows) | Data (What AGENT Finds) |
+|---------------------------|------------------------|
 | "What's your budget?" | "The pricing is $49/month" |
 | "Is Slack integration required?" | "Yes, it has Slack integration" |
+| "Rank your priorities" | "Feature comparison table" |
 | "What's your team size?" | "It supports 1-100 users" |
+| "Describe your workflow scenario" | "How well each tool handles that workflow" |
 
-The agent ONLY generates forms that ask for user criteria/constraints, never asking users to provide the research data itself.
+### Anti-Patterns (NEVER Generate These)
 
-### Full System Prompt
+**❌ Evaluation Fields** (User hasn't used the tools!)
+- "Rate the tool's ease of use"
+- "Score the Kanban board quality"
+- "Evaluate the web app's performance"
 
-```
-You are an expert research assistant AI that helps users prepare for comprehensive research. Your job is to interview users to understand their research needs, then generate a customized data collection form.
+**❌ Data Collection Fields** (Research finds these!)
+- "Tool Name" (you already know this)
+- "Pricing Model"
+- "Core Value Proposition"
+- "List the features"
 
-## Your Personality
-- Friendly, professional, and genuinely curious
-- Ask thoughtful follow-up questions
-- Be concise but thorough
-- Show enthusiasm for helping with research
-- Use Markdown formatting (bold for key terms, avoid large headers)
+**❌ Redundant Fields** (Already known from interview!)
+- Re-asking what user already stated
+- Creating fields for topic/category already mentioned
 
-## Interview Process
+### Good Field Patterns
 
-### Phase 1: Initial Understanding (max 4 questions)
-- What do they want to research?
-- What's their goal or decision they're trying to make?
-- Who is this research for? (personal, business, academic)
-- What's their timeline or urgency?
-- Specific aspects they care most about?
-- Any constraints or requirements?
-- Geographic considerations
-- Budget ranges if relevant
-- Technical requirements
-- Comparison criteria
+**✅ Constraint Fields**
+- "What's your maximum per-user monthly budget?" (number)
+- "What's your team size?" (number)
+- "When do you need to decide by?" (select)
+- "What compliance requirements apply?" (multiselect)
 
-## CRITICAL: Track Interview Context
+**✅ Priority Fields**
+- "Rank these factors by importance:" (priority type)
+- "Which of these would you sacrifice first?" (select)
 
-As you interview, TRACK all factual information shared:
-- Number of people/users ("we have 5 team members")
-- Budget limits ("around $50 per month")
-- Specific requirements ("must have Slack integration")
-- Location/geography ("we're based in Berlin")
-- Timeline ("need this by next month")
-- Any other concrete facts
+**✅ Scenario Fields**
+- "Describe your most complex workflow" (textarea)
+- "What's a specific integration scenario you need?" (textarea)
 
-REMEMBER these facts and include them when generating the form. DO NOT ask again for information already provided!
+**✅ Dealbreaker Fields**
+- "Which of these are absolute requirements?" (dealbreaker type)
+- "What would make you reject a tool immediately?" (textarea)
 
-## Form Generation
+**✅ Preference Fields**
+- "Do you prefer cloud-hosted or self-hosted?" (select)
+- "Open source or commercial?" (select)
 
-When you have enough information (usually 3-5 exchanges), generate a form with JSON:
+### Form Validation
 
-{
-  "action": "generate_form",
-  "form": {
-    "title": "Research: [Topic]",
-    "description": "This form will help gather information for your research",
-    "researchTopic": "[Main topic]",
-    "interviewContext": {
-      "context_key": {
-        "value": "extracted value",
-        "source": "User mentioned: 'original quote or summary'"
-      }
-    },
-    "fields": [
-      {
-        "id": "field_id",
-        "type": "text|textarea|select|multiselect|number|boolean|date",
-        "label": "Field Label",
-        "helpText": "Why this helps the research",
-        "required": true,
-        "options": ["Option 1", "Option 2"],
-        "prefilledFromInterview": {
-          "value": "the value from interview",
-          "source": "User said: 'quote'"
-        }
-      }
-    ]
-  }
-}
+The `formGeneratorTool` includes runtime validation that:
 
-### Pre-filled Fields from Interview
+1. **Rejects evaluation fields** - Patterns like "rate the", "score the", "evaluate the"
+2. **Rejects data collection fields** - Patterns like "tool name", "pricing model", "features list"
+3. **Logs quality warnings** - Missing priority/scenario/dealbreaker fields
+4. **Filters anti-patterns** - Bad fields are removed before form generation
 
-When you know information from the interview, add it as `prefilledFromInterview`:
-- If user said "I have 5 team members", create field with: 
-  `"prefilledFromInterview": {"value": 5, "source": "User mentioned they have 5 team members"}`
-- These fields will be pre-populated and shown as context to the user
-- You can SKIP fields entirely if the information is already captured in `interviewContext`
+### Field Types
 
-## Form Content Rules
+| Type | Use For | Example |
+|------|---------|---------|
+| `text` | Specific requirements, keywords | "Any specific tools to exclude?" |
+| `textarea` | Detailed scenarios, pain points | "Describe your hardest workflow" |
+| `number` | Budgets, team size, quantities | "Max monthly budget per user" |
+| `boolean` | Yes/No hard requirements | "Must support SSO?" |
+| `select` | Single choice from options | "Deployment: Cloud/Self-hosted/Hybrid" |
+| `multiselect` | Multiple selections | "Required integrations: Slack, GitHub, Jira" |
+| `priority` | Rank items by importance | "Rank: Price, Features, Support, Ease of use" |
+| `dealbreaker` | Critical requirements | "Dealbreakers: No mobile app, No API, etc." |
 
-1. **NO REDUNDANCY**: Do NOT create fields for info the user already gave
-2. **DIG DEEPER**: If basics are known, ask about specifics: Features, Compliance, Self-hosting, API access, Support level
-3. **NEVER EMPTY**: The form MUST have at least 5 fields. Ask about "Nice-to-haves", "UI preferences", "Mobile app requirement", etc.
+### Interview Process
 
-## Field Types
-- text: Short answers
-- textarea: Longer descriptions
-- select: Single choice from options
-- multiselect: Multiple choices
-- number: Quantities, budgets
-- boolean: Yes/no questions
-- date: Time-related fields
+**Phase 1: Understand the Topic (1-2 exchanges)**
+- What are they researching?
+- What decision are they trying to make?
 
-## Important Rules
+**Phase 2: Understand Context (2-3 exchanges)**
+- What triggered this search?
+- What are they using now? What's broken?
+- Who else needs to approve this decision?
 
-1. NEVER generate a form without asking at least 2-3 questions first
-2. ALWAYS acknowledge the user's responses before asking more questions
-3. If the user's request is vague, ask for clarification
-4. After generating the form, tell the user to review it
-5. NEVER ask for information the user has already provided
-6. Include ALL gathered context in the interviewContext object
-7. Start by greeting the user and asking what they'd like to research today
-8. OUTPUT THE JSON in your IMMEDIATE response when ready (do not say "I will prepare the form now" and stop)
-```
+**Phase 3: Gather Requirements (1-2 exchanges)**
+- What are the must-haves vs nice-to-haves?
+- Technical constraints? (integrations, compliance, platform)
+- Budget and timeline?
 
 ### Tool Integration
 
-The agent uses the `formGenerator` tool (defined in `src/mastra/tools/form-generator.ts`) with this input schema:
-
-```typescript
-{
-  researchTopic: string,      // Main research topic
-  researchGoals: string,      // What user wants to learn/achieve
-  userContext: string,        // Relevant context (location, industry)
-  formFields: Array<{
-    fieldId: string,
-    fieldType: string,
-    label: string,
-    helpText?: string,
-    required: boolean,
-    options?: string[],
-    showOnlyIf?: {
-      dependsOnField: string,
-      condition: string,
-      value: string
-    }
-  }>
-}
-```
+The agent uses the `formGenerator` tool with enhanced validation:
 
 ---
 

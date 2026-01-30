@@ -18,7 +18,9 @@ export type FieldType =
     | 'checkbox'
     | 'date'
     | 'datetime'
-    | 'boolean';
+    | 'boolean'
+    | 'priority'      // Ranked list for prioritizing options
+    | 'dealbreaker';  // Boolean with special UI treatment for critical requirements
 
 /**
  * Comparison operators for conditional logic
@@ -100,7 +102,7 @@ export interface FormField {
     required: boolean;
     validationRules?: ValidationRule[];
 
-    // Options for select/multiselect/radio
+    // Options for select/multiselect/radio/priority fields
     options?: FieldOption[];
 
     // Conditional visibility (field is hidden if conditions are not met)
@@ -114,6 +116,10 @@ export interface FormField {
 
     // Order within form
     order: number;
+
+    // Business-critical field markers
+    isDealbreaker?: boolean;  // If true, this requirement is non-negotiable
+    priorityWeight?: number;  // 1-10 scale for how important this field's answer is to research
 }
 
 /**

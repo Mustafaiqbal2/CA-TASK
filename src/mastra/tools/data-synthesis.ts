@@ -47,7 +47,7 @@ Return ONLY a JSON object with this structure (no markdown, no code blocks):
 
         try {
             const result = await openai.chat.completions.create({
-                model: 'gpt-4o',
+                model: 'gpt-4.1',
                 messages: [{ role: 'user', content: prompt }],
                 response_format: { type: 'json_object' },
             });

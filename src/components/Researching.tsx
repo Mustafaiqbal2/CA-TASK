@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useAppStore } from '@/lib/state-machine';
+import { useAppStore, normalizeResearchResult } from '@/lib/state-machine';
 import styles from './Researching.module.css';
 
 // Icons
@@ -109,23 +109,62 @@ const NeuralNetwork = () => {
 };
 
 export function Researching() {
-    const { location, formData, researchStatus, researchProgress, setResearchProgress, setResearchResults, transition, formSchema } = useAppStore();
+    const { location, formData, researchStatus, researchProgress, setResearchProgress, setResearchResults, transition, formSchema, reset } = useAppStore();
     const [elapsedTime, setElapsedTime] = useState(0);
-    const requestStarted = useRef(false);
     const [logs, setLogs] = useState<string[]>([]);
     const logsEndRef = useRef<HTMLDivElement>(null);
+    const [hasError, setHasError] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
+    const [retryCount, setRetryCount] = useState(0);
+    
+    // Track which form ID we've already started researching to prevent duplicates
+    const researchedFormId = useRef<string | null>(null);
 
     // Auto-scroll logs when new entries are added
     useEffect(() => {
         logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [logs]);
 
-    // Call research API
-    useEffect(() => {
-        if (requestStarted.current || !formSchema || !formData) return;
-        requestStarted.current = true;
+    // Retry handler - reset the form ID to allow re-research
+    const handleRetry = () => {
+        setHasError(false);
+        setErrorMessage('');
+        setRetryCount(prev => prev + 1);
+        setElapsedTime(0);
+        setLogs([]);
+        researchedFormId.current = null; // Allow new research
+        setResearchProgress(0, 'Retrying research...');
+    };
 
-        let isCancelled = false; // Local flag for THIS effect instance
+    // Start new research
+    const handleStartNew = () => {
+        reset();
+    };
+
+    // Call research API - uses form ID to prevent duplicate calls
+    useEffect(() => {
+        const currentFormId = formSchema?.id;
+        
+        // Skip if no form, no data, or we've already started this exact form
+        if (!currentFormId || !formData) return;
+        if (researchedFormId.current === currentFormId && retryCount === 0) {
+            console.log('[CLIENT] Skipping duplicate research for form:', currentFormId);
+            return;
+        }
+        
+        // Mark this form as being researched
+        researchedFormId.current = currentFormId;
+
+        // AbortController to cancel in-flight requests on unmount
+        const abortController = new AbortController();
+        let isCancelled = false;
+        
+        // Reset UI state for fresh research
+        setElapsedTime(0);
+        setLogs([]);
+        setHasError(false);
+        setErrorMessage('');
+        setResearchProgress(0, 'Initializing...');
 
         const timer = setInterval(() => {
             setElapsedTime(prev => prev + 1);
@@ -133,7 +172,7 @@ export function Researching() {
 
         async function startResearch() {
             try {
-                console.log('[CLIENT] Starting research...');
+                console.log('[CLIENT] Starting research for form:', currentFormId);
                 setResearchProgress(5, 'Initializing research agent...');
                 console.log('[CLIENT] Making fetch request to /api/research');
 
@@ -145,6 +184,7 @@ export function Researching() {
                         formData: formData,
                         location: location
                     }),
+                    signal: abortController.signal, // Allow cancellation
                 });
 
                 console.log('[CLIENT] Response received', response.status, response.ok);
@@ -325,9 +365,13 @@ export function Researching() {
                         throw new Error('Could not extract valid JSON from response');
                     }
 
+                    // Normalize the result to convert legacy fields to sections[]
+                    // This ensures all downstream code sees a unified format
+                    const normalizedResult = normalizeResearchResult(result as Record<string, unknown>);
+                    
                     // Validate it has fields we need
-                    if (result.title || result.summary) {
-                        setResearchResults(result);
+                    if (normalizedResult.title || normalizedResult.summary) {
+                        setResearchResults(normalizedResult);
                         setTimeout(() => transition('PRESENTING', 'research_complete'), 1000);
                     } else {
                         throw new Error('Missing result fields');
@@ -351,23 +395,49 @@ export function Researching() {
                 }
 
             } catch (error) {
+                // Check for abort - don't show error if request was intentionally cancelled
+                if (error instanceof DOMException && error.name === 'AbortError') {
+                    console.log('[CLIENT] Request aborted (expected during unmount)');
+                    return;
+                }
                 if (isCancelled) {
                     console.log('[CLIENT] Request cancelled');
                     return;
                 }
                 console.error('[CLIENT ERROR]', error);
-                setResearchProgress(0, 'Research failed. Please try again.');
+                clearInterval(timer);
+                
+                // Determine error message
+                let userMessage = 'Research failed. ';
+                if (error instanceof Error) {
+                    if (error.message.includes('terminated') || error.message.includes('socket')) {
+                        userMessage += 'Connection was interrupted. This can happen with long research sessions.';
+                    } else if (error.message.includes('timeout')) {
+                        userMessage += 'The request took too long. Try a simpler query or standard depth.';
+                    } else if (error.message.includes('fetch')) {
+                        userMessage += 'Network error. Please check your connection.';
+                    } else {
+                        userMessage += error.message;
+                    }
+                } else {
+                    userMessage += 'An unexpected error occurred.';
+                }
+                
+                setHasError(true);
+                setErrorMessage(userMessage);
+                setResearchProgress(0, 'Research failed');
             }
         }
 
         startResearch();
 
         return () => {
-            console.log('[CLIENT] Cleanup - setting cancelled flag');
+            console.log('[CLIENT] Cleanup - aborting request for form:', currentFormId);
             isCancelled = true;
+            abortController.abort(); // Cancel in-flight fetch
             clearInterval(timer);
         };
-    }, []);
+    }, [formSchema?.id, retryCount]); // Re-run when form ID or retryCount changes
 
     // Format time
     const formatTime = (seconds: number) => {
@@ -375,6 +445,53 @@ export function Researching() {
         const secs = seconds % 60;
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
+
+    // If there's an error, show error state with retry options
+    if (hasError) {
+        return (
+            <div className={styles.container}>
+                <FloatingParticles />
+                <div className={styles.aurora}>
+                    <div className={styles.auroraBlob1} />
+                    <div className={styles.auroraBlob2} />
+                </div>
+                
+                <div className={styles.content}>
+                    <div className={styles.errorState}>
+                        <div className={styles.errorIcon}>
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <circle cx="12" cy="12" r="10" />
+                                <path d="M12 8v4m0 4h.01" />
+                            </svg>
+                        </div>
+                        <h2 className={styles.errorTitle}>Research Interrupted</h2>
+                        <p className={styles.errorMessage}>{errorMessage}</p>
+                        <div className={styles.errorActions}>
+                            <button onClick={handleRetry} className={styles.retryButton}>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38" />
+                                </svg>
+                                Try Again
+                            </button>
+                            <button onClick={handleStartNew} className={styles.startNewButton}>
+                                Start New Research
+                            </button>
+                        </div>
+                        {logs.length > 0 && (
+                            <div className={styles.errorLogs}>
+                                <p className={styles.errorLogsTitle}>Research log:</p>
+                                <div className={styles.logTerminal}>
+                                    {logs.slice(-5).map((log, idx) => (
+                                        <div key={idx} className={styles.logLine}>{log}</div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className={styles.container}>

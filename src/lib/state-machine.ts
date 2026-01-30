@@ -20,6 +20,101 @@ export type AppState =
     | 'PRESENTING';     // Displaying research results
 
 /**
+ * Research depth level
+ * - standard: 8-10 searches, faster results
+ * - deep: 15-20 searches, comprehensive analysis with risk assessment
+ */
+export type ResearchDepth = 'standard' | 'deep';
+
+/**
+ * Section types for dynamic rendering
+ * The renderer will use these to determine how to display content
+ */
+export type SectionType = 
+    | 'text'           // Plain or markdown text
+    | 'list'           // Bullet list of items
+    | 'numbered-list'  // Numbered list
+    | 'table'          // Key-value or multi-column table
+    | 'comparison'     // Side-by-side comparison cards
+    | 'metrics'        // Stats/numbers with labels
+    | 'timeline'       // Chronological events
+    | 'warning'        // Risk/caution callout
+    | 'success'        // Positive callout
+    | 'info'           // Informational callout
+    | 'pros-cons'      // Two-column pros and cons
+    | 'pricing'        // Pricing tiers
+    | 'code'           // Code snippet
+    | 'quote'          // Blockquote
+    | 'steps'          // Step-by-step instructions
+    | 'gallery'        // Multiple items with icons
+    | 'custom';        // Fallback for unknown types
+
+/**
+ * Self-describing dynamic section
+ * The agent defines both WHAT to show and HOW to show it
+ */
+export interface DynamicSection {
+    /** Unique identifier for the section */
+    id: string;
+    
+    /** Display title (e.g., "Market Context", "Legal Considerations") */
+    title: string;
+    
+    /** How to render this section */
+    sectionType: SectionType;
+    
+    /** Optional emoji/icon hint for the UI */
+    icon?: string;
+    
+    /** The actual content - structure depends on sectionType */
+    content: unknown;
+    
+    /** Display priority (lower = higher on page, default 50) */
+    priority?: number;
+    
+    /** Whether section should start collapsed */
+    collapsible?: boolean;
+    
+    /** Whether section starts collapsed (only if collapsible) */
+    defaultCollapsed?: boolean;
+}
+
+// ============================================
+// Legacy Types (for backwards compatibility)
+// ============================================
+
+/**
+ * @deprecated Use DynamicSection with sectionType: 'comparison' instead
+ */
+export interface ComparisonEntry {
+    option: string;
+    scores: Record<string, number | string>;
+    highlights: string;
+    bestFor: string;
+}
+
+/**
+ * @deprecated Use DynamicSection with sectionType: 'metrics' instead
+ */
+export interface MarketContext {
+    size: string;
+    growth: string;
+    trends: string[];
+    leaders: string[];
+}
+
+/**
+ * @deprecated Use DynamicSection with sectionType: 'list' or 'steps' instead
+ */
+export interface ImplementationNotes {
+    complexity: 'low' | 'medium' | 'high';
+    timeEstimate: string;
+    prerequisites: string[];
+    integrationPoints: string[];
+    securityConsiderations: string[];
+}
+
+/**
  * Error state for handling failures
  */
 export interface ErrorState {
@@ -65,18 +160,64 @@ export interface ChatSession {
 }
 
 /**
- * Research result structure
+ * Research result structure with self-describing dynamic sections
+ * 
+ * The agent outputs sections[] which describe both content AND how to render it.
+ * This allows unlimited flexibility - the agent can create any section type.
+ * 
+ * Legacy fields (prosAndCons, pricing, etc.) are kept for backwards compatibility
+ * but new research should use the sections[] array.
  */
 export interface ResearchResult {
+    /** Unique result identifier */
     id: string;
+    
+    /** Report title */
     title: string;
+    
+    /** Executive summary (always shown at top) */
     summary: string;
-    overview?: string;
+    
+    /** Key findings list */
     keyFindings: string[];
+    
+    /** Sources/references */
+    sources: Array<{
+        title: string;
+        url: string;
+        snippet: string;
+    }>;
+    
+    /** When the research was completed */
+    timestamp: Date;
+    
+    /** 
+     * Free-form research intent description
+     * NOT an enum - can be any descriptive string
+     */
+    researchIntent?: string;
+    
+    /** 
+     * DYNAMIC SECTIONS - The core innovation
+     * Agent-defined sections that describe both content and rendering
+     */
+    sections?: DynamicSection[];
+    
+    // ============================================
+    // Legacy fields (backwards compatibility)
+    // These will be auto-converted to sections[] by the normalizer
+    // ============================================
+    
+    /** @deprecated Use sections[] with sectionType: 'text' */
+    overview?: string;
+    
+    /** @deprecated Use sections[] with sectionType: 'pros-cons' */
     prosAndCons?: {
         pros: string[];
         cons: string[];
     };
+    
+    /** @deprecated Use sections[] with sectionType: 'pricing' */
     pricing?: {
         overview: string;
         tiers: Array<{
@@ -86,17 +227,178 @@ export interface ResearchResult {
         }>;
         notes?: string;
     } | null;
+    
+    /** @deprecated Use sections[] with sectionType: 'comparison' */
     competitors?: Array<{
         name: string;
         comparison: string;
     }>;
+    
+    /** @deprecated Use sections[] with sectionType: 'text' */
     recommendations?: string;
-    sources: Array<{
-        title: string;
-        url: string;
-        snippet: string;
-    }>;
-    timestamp: Date;
+    
+    /** @deprecated Use sections[] with sectionType: 'comparison' */
+    comparisonMatrix?: ComparisonEntry[];
+    
+    /** @deprecated Use sections[] with sectionType: 'metrics' */
+    marketContext?: MarketContext;
+    
+    /** @deprecated Use sections[] with sectionType: 'steps' */
+    implementationNotes?: ImplementationNotes;
+    
+    /** @deprecated Use sections[] with sectionType: 'list' */
+    negotiationTips?: string[];
+    
+    /** @deprecated Use sections[] with sectionType: 'warning' */
+    riskAssessment?: string;
+    
+    /** @deprecated Use sections[] with sectionType: 'table' */
+    tcoBreakdown?: {
+        upfront: string;
+        recurring: string;
+        hidden: string[];
+        threeYearTotal: string;
+    };
+}
+
+// ============================================
+// Normalization: Convert Legacy Fields to Sections
+// ============================================
+
+/**
+ * Normalize research results by converting legacy fields to dynamic sections
+ * This ensures all downstream code can use the unified sections[] array
+ * 
+ * Also handles unknown fields from the agent - anything not in the known schema
+ * gets auto-converted to a section based on its content type
+ */
+export function normalizeResearchResult(raw: Record<string, unknown>): ResearchResult {
+    const sections: DynamicSection[] = [...(raw.sections as DynamicSection[] || [])];
+    let priority = 10; // Start priority for auto-generated sections
+    
+    // Helper to add section if content exists
+    const addSection = (
+        id: string,
+        title: string,
+        sectionType: SectionType,
+        content: unknown,
+        icon?: string,
+        opts?: Partial<DynamicSection>
+    ) => {
+        if (content !== undefined && content !== null) {
+            sections.push({
+                id,
+                title,
+                sectionType,
+                content,
+                icon,
+                priority: priority++,
+                ...opts
+            });
+        }
+    };
+    
+    // Convert known legacy fields
+    if (raw.overview && !sections.find(s => s.id === 'overview')) {
+        addSection('overview', 'Overview', 'text', raw.overview, '📋');
+    }
+    
+    if (raw.prosAndCons && !sections.find(s => s.id === 'pros-cons')) {
+        addSection('pros-cons', 'Pros & Cons', 'pros-cons', raw.prosAndCons, '⚖️');
+    }
+    
+    if (raw.pricing && !sections.find(s => s.id === 'pricing')) {
+        addSection('pricing', 'Pricing', 'pricing', raw.pricing, '💰');
+    }
+    
+    if (raw.competitors && (raw.competitors as unknown[]).length > 0 && !sections.find(s => s.id === 'competitors')) {
+        addSection('competitors', 'Competitors', 'comparison', raw.competitors, '🏢');
+    }
+    
+    if (raw.comparisonMatrix && (raw.comparisonMatrix as unknown[]).length > 0 && !sections.find(s => s.id === 'comparison-matrix')) {
+        addSection('comparison-matrix', 'Comparison Matrix', 'comparison', raw.comparisonMatrix, '📊');
+    }
+    
+    if (raw.marketContext && !sections.find(s => s.id === 'market-context')) {
+        addSection('market-context', 'Market Context', 'metrics', raw.marketContext, '📈');
+    }
+    
+    if (raw.implementationNotes && !sections.find(s => s.id === 'implementation')) {
+        addSection('implementation', 'Implementation Notes', 'steps', raw.implementationNotes, '🔧');
+    }
+    
+    if (raw.tcoBreakdown && !sections.find(s => s.id === 'tco')) {
+        addSection('tco', 'Total Cost of Ownership', 'table', raw.tcoBreakdown, '🧮');
+    }
+    
+    if (raw.negotiationTips && (raw.negotiationTips as unknown[]).length > 0 && !sections.find(s => s.id === 'negotiation')) {
+        addSection('negotiation', 'Negotiation Tips', 'list', raw.negotiationTips, '🤝');
+    }
+    
+    if (raw.riskAssessment && !sections.find(s => s.id === 'risks')) {
+        addSection('risks', 'Risk Assessment', 'warning', raw.riskAssessment, '⚠️');
+    }
+    
+    if (raw.recommendations && !sections.find(s => s.id === 'recommendations')) {
+        addSection('recommendations', 'Recommendations', 'text', raw.recommendations, '💡');
+    }
+    
+    // Handle UNKNOWN fields from the agent (the key innovation!)
+    const knownFields = new Set([
+        'id', 'title', 'summary', 'keyFindings', 'sources', 'timestamp',
+        'researchIntent', 'sections', 'overview', 'prosAndCons', 'pricing',
+        'competitors', 'recommendations', 'comparisonMatrix', 'marketContext',
+        'implementationNotes', 'negotiationTips', 'riskAssessment', 'tcoBreakdown'
+    ]);
+    
+    for (const [key, value] of Object.entries(raw)) {
+        if (knownFields.has(key) || value === undefined || value === null) continue;
+        
+        // Check if section with this id already exists
+        if (sections.find(s => s.id === key)) continue;
+        
+        // Auto-detect content type and create section
+        const title = key
+            .replace(/([A-Z])/g, ' $1')
+            .replace(/_/g, ' ')
+            .replace(/^./, str => str.toUpperCase())
+            .trim();
+        
+        let sectionType: SectionType = 'text';
+        if (Array.isArray(value)) {
+            sectionType = 'list';
+        } else if (typeof value === 'object') {
+            sectionType = 'table';
+        }
+        
+        addSection(key, title, sectionType, value, '📌');
+    }
+    
+    // Sort sections by priority
+    sections.sort((a, b) => (a.priority || 50) - (b.priority || 50));
+    
+    return {
+        id: (raw.id as string) || `result_${Date.now()}`,
+        title: (raw.title as string) || 'Research Report',
+        summary: (raw.summary as string) || '',
+        keyFindings: (raw.keyFindings as string[]) || [],
+        sources: (raw.sources as ResearchResult['sources']) || [],
+        timestamp: raw.timestamp ? new Date(raw.timestamp as string) : new Date(),
+        researchIntent: raw.researchIntent as string,
+        sections,
+        // Keep legacy fields for components that haven't migrated yet
+        overview: raw.overview as string,
+        prosAndCons: raw.prosAndCons as ResearchResult['prosAndCons'],
+        pricing: raw.pricing as ResearchResult['pricing'],
+        competitors: raw.competitors as ResearchResult['competitors'],
+        recommendations: raw.recommendations as string,
+        comparisonMatrix: raw.comparisonMatrix as ComparisonEntry[],
+        marketContext: raw.marketContext as MarketContext,
+        implementationNotes: raw.implementationNotes as ImplementationNotes,
+        negotiationTips: raw.negotiationTips as string[],
+        riskAssessment: raw.riskAssessment as string,
+        tcoBreakdown: raw.tcoBreakdown as ResearchResult['tcoBreakdown'],
+    };
 }
 
 /**
@@ -119,7 +421,7 @@ const VALID_TRANSITIONS: Record<AppState, AppState[]> = {
     FORM_PREVIEW: ['INTERVIEWING', 'FORM_ACTIVE'],
     FORM_ACTIVE: ['RESEARCHING', 'FORM_PREVIEW'],
     RESEARCHING: ['PRESENTING', 'FORM_ACTIVE'], // Can go back if research fails
-    PRESENTING: ['INTERVIEWING'],
+    PRESENTING: ['INTERVIEWING', 'RESEARCHING'], // Can research again or start new
 };
 
 // ============================================
