@@ -179,27 +179,55 @@ Execute the ${researchDepth.toUpperCase()} research plan. Be THOROUGH - the user
                         setTimeout(() => reject(new Error(`Agent stream timeout after ${timeoutMs / 1000} seconds`)), timeoutMs);
                     });
 
+                    // Track progress state for structured updates
+                    let currentStep = 0;
+                    let toolCallCount = 0;
+                    const totalSteps = maxSteps;
+                    
+                    // Helper to send structured progress events
+                    const sendProgress = (progress: number, status: string, phase: string, detail?: string) => {
+                        const progressEvent = {
+                            type: 'progress',
+                            progress: Math.min(Math.max(0, progress), 100),
+                            status,
+                            phase,
+                            detail,
+                            timestamp: Date.now()
+                        };
+                        try {
+                            controller.enqueue(new TextEncoder().encode(`1:${JSON.stringify(progressEvent)}\n`));
+                        } catch (e) {
+                            // Client disconnected
+                        }
+                    };
+
                     let result;
                     try {
                         result = await Promise.race([
                             researcher.stream(userPrompt, {
                                 maxSteps: maxSteps,
                                 onStepFinish: (step) => {
+                                    currentStep++;
+                                    // Calculate progress based on actual steps completed
+                                    // Reserve 0-10% for init, 10-85% for steps, 85-100% for finalization
+                                    const stepProgress = 10 + Math.floor((currentStep / totalSteps) * 75);
+                                    
                                     // Check for report in tool results or content
-                                    // This is critical if the agent doesn't stream the tool output as text deltas
                                     const anyStep = step as any;
                                     const toolName = anyStep.toolName || anyStep.payload?.toolName;
 
                                     if (anyStep.type === 'tool-result' && (toolName === 'dataSynthesis' || toolName === 'data-synthesis')) {
+                                        sendProgress(85, 'Synthesizing final report...', 'synthesizing');
                                         // Extract text content from the step
                                         const content = anyStep.content || [];
                                         for (const item of content) {
                                             if (item.type === 'text' && item.text) {
                                                 console.log('[Research API] Found report in step-finish, streaming to client...');
-                                                // Send as a standard text chunk so client accumulates it
                                                 controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(item.text)}\n`));
                                             }
                                         }
+                                    } else {
+                                        sendProgress(stepProgress, `Step ${currentStep}/${totalSteps} completed`, 'analyzing');
                                     }
                                 }
                             }),
@@ -213,6 +241,9 @@ Execute the ${researchDepth.toUpperCase()} research plan. Be THOROUGH - the user
                         controller.close();
                         return;
                     }
+                    
+                    // Send initial progress after agent is ready
+                    sendProgress(10, 'Research agent initialized', 'planning');
 
                     // Process stream
                     console.log('[15] Starting to read from agent stream...');
@@ -253,8 +284,28 @@ Execute the ${researchDepth.toUpperCase()} research plan. Be THOROUGH - the user
                                 }
                             }
                         } else if (chunk.type === 'tool-call') {
+                            toolCallCount++;
                             // Mastra uses payload.toolName for tool name
                             const toolName = chunk.payload?.toolName || chunk.toolName || 'unknown tool';
+                            
+                            // Map tool names to user-friendly phases
+                            let phase = 'searching';
+                            let status = `Using ${toolName}...`;
+                            if (toolName.includes('search') || toolName === 'webSearch' || toolName === 'web-search') {
+                                phase = 'searching';
+                                status = `Searching the web (${toolCallCount})...`;
+                            } else if (toolName.includes('synthesis') || toolName === 'dataSynthesis' || toolName === 'data-synthesis') {
+                                phase = 'synthesizing';
+                                status = 'Synthesizing research report...';
+                            } else if (toolName.includes('location') || toolName === 'locationContext') {
+                                phase = 'planning';
+                                status = 'Gathering location context...';
+                            }
+                            
+                            // Progress based on tool calls (10-75% range for tool calls)
+                            const toolProgress = 10 + Math.min(65, toolCallCount * 5);
+                            sendProgress(toolProgress, status, phase, toolName);
+                            
                             const toolMsg = `\n[System: Using tool ${toolName}...]`;
                             try {
                                 controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(toolMsg)}\n`));
@@ -267,6 +318,11 @@ Execute the ${researchDepth.toUpperCase()} research plan. Be THOROUGH - the user
                             // Send tool result notification
                             const toolName = chunk.payload?.toolName || chunk.toolName || 'tool';
                             const resultMsg = `\n[System: ${toolName} completed]`;
+                            
+                            // Progress bump for completed tool
+                            const toolProgress = 15 + Math.min(70, toolCallCount * 5);
+                            sendProgress(toolProgress, `${toolName} completed`, 'analyzing', toolName);
+                            
                             try {
                                 controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(resultMsg)}\n`));
                             } catch (e) {
@@ -285,7 +341,7 @@ Execute the ${researchDepth.toUpperCase()} research plan. Be THOROUGH - the user
                             }
                             console.error('[CHUNK-ERROR]', chunk.payload || chunk.error);
                         } else if (chunk.type === 'step-finish') {
-                            // Notify about step completion
+                            // Notify about step completion (progress sent in onStepFinish callback)
                             const stepMsg = `\n[System: Step completed, proceeding...]`;
                             try {
                                 controller.enqueue(new TextEncoder().encode(`0:${JSON.stringify(stepMsg)}\n`));
@@ -296,6 +352,9 @@ Execute the ${researchDepth.toUpperCase()} research plan. Be THOROUGH - the user
                             }
                         }
                     }
+                    
+                    // Send final progress
+                    sendProgress(100, 'Research complete!', 'complete');
 
                     console.log('[Research API] Stream completed');
                     safeClose();

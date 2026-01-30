@@ -381,14 +381,13 @@ The section types above are EXAMPLES. If your research needs something else:
  * - Data synthesis (summarization)
  * - Location context (for regional personalization)
  * 
- * Uses OpenAI o4-mini reasoning model for better multi-step problem solving.
- * o4-mini excels at "thinking through" complex research requirements.
+ * Uses OpenAI GPT-5.2 - the best reasoning model for complex agentic tasks.
  */
 export const researchAgent = new Agent({
   id: 'research-agent',
   name: 'Research Agent',
   instructions: RESEARCH_AGENT_SYSTEM_PROMPT,
-  model: openai('o4-mini'),
+  model: openai('gpt-5.2'),
   tools: {
     webSearch: webSearchTool,
     dataSynthesis: dataSynthesisTool,

@@ -1,11 +1,87 @@
 
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAppStore } from '@/lib/state-machine';
 import { generatePDF } from '@/lib/pdf-export';
 import { useToast } from '@/components/Toast';
 import styles from './ResearchResults.module.css';
+
+/**
+ * Simple markdown renderer for text content.
+ * Handles: **bold**, *italic*, and line breaks.
+ */
+function renderMarkdown(text: string): React.ReactNode[] {
+    if (!text) return [];
+    
+    // Split by double newlines to create paragraphs
+    const paragraphs = text.split(/\n\n+/);
+    
+    return paragraphs.map((paragraph, pIndex) => {
+        // Process inline markdown within each paragraph
+        const processInline = (str: string): React.ReactNode[] => {
+            const parts: React.ReactNode[] = [];
+            let remaining = str;
+            let key = 0;
+            
+            while (remaining.length > 0) {
+                // Look for **bold**
+                const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
+                // Look for *italic* (but not **)
+                const italicMatch = remaining.match(/(?<!\*)\*([^*]+)\*(?!\*)/);
+                
+                // Find which comes first
+                const boldIndex = boldMatch ? remaining.indexOf(boldMatch[0]) : -1;
+                const italicIndex = italicMatch ? remaining.indexOf(italicMatch[0]) : -1;
+                
+                let firstMatch: RegExpMatchArray | null = null;
+                let firstIndex = -1;
+                let isBold = false;
+                
+                if (boldIndex !== -1 && (italicIndex === -1 || boldIndex <= italicIndex)) {
+                    firstMatch = boldMatch;
+                    firstIndex = boldIndex;
+                    isBold = true;
+                } else if (italicIndex !== -1) {
+                    firstMatch = italicMatch;
+                    firstIndex = italicIndex;
+                    isBold = false;
+                }
+                
+                if (firstMatch && firstIndex !== -1) {
+                    // Add text before the match
+                    if (firstIndex > 0) {
+                        parts.push(<span key={key++}>{remaining.substring(0, firstIndex)}</span>);
+                    }
+                    // Add the formatted text
+                    if (isBold) {
+                        parts.push(<strong key={key++}>{firstMatch[1]}</strong>);
+                    } else {
+                        parts.push(<em key={key++}>{firstMatch[1]}</em>);
+                    }
+                    remaining = remaining.substring(firstIndex + firstMatch[0].length);
+                } else {
+                    // No more matches, add remaining text
+                    parts.push(<span key={key++}>{remaining}</span>);
+                    break;
+                }
+            }
+            
+            return parts;
+        };
+        
+        // Handle single line breaks within paragraphs
+        const lines = paragraph.split(/\n/);
+        const content = lines.map((line, lIndex) => (
+            <span key={`line-${lIndex}`}>
+                {processInline(line)}
+                {lIndex < lines.length - 1 && <br />}
+            </span>
+        ));
+        
+        return <p key={pIndex} style={{ marginBottom: '1em' }}>{content}</p>;
+    });
+}
 
 // Icons
 const DownloadIcon = () => (
@@ -1222,7 +1298,7 @@ export function ResearchResults() {
                 <section className={styles.section}>
                     <h2 className={styles.sectionTitle}>Executive Summary</h2>
                     <div className={styles.card}>
-                        <p className={styles.summaryText}>{summary}</p>
+                        <div className={styles.summaryText}>{renderMarkdown(summary || '')}</div>
                     </div>
                 </section>
 
@@ -1231,7 +1307,7 @@ export function ResearchResults() {
                     <section className={styles.section}>
                         <h2 className={styles.sectionTitle}>Overview</h2>
                         <div className={styles.card}>
-                            <p className={styles.overviewText}>{overview}</p>
+                            <div className={styles.overviewText}>{renderMarkdown(overview)}</div>
                         </div>
                     </section>
                 )}

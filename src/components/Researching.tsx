@@ -133,6 +133,10 @@ export function Researching() {
     const abortControllerRef = useRef<AbortController | null>(null);
     const userClickedCancelRef = useRef(false);
     
+    // Timer ref - ensures timer survives across renders and is properly cleaned up
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
+    const timerStartTimeRef = useRef<number>(0);
+    
     // Track if component is still mounted to prevent state updates after unmount
     const isMountedRef = useRef(true);
 
@@ -209,46 +213,21 @@ export function Researching() {
         setErrorMessage('');
         setResearchProgress(0, 'Initializing...');
 
-        // Track content accumulation for smooth progress
-        let lastContentLength = 0;
-        let contentStarted = false;
+        // Clear any existing timer before starting new one
+        if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+        }
         
-        // Timer for elapsed time AND smooth progress updates
-        const timer = setInterval(() => {
-            setElapsedTime(prev => {
-                const newTime = prev + 1;
-                
-                // Get current progress state
-                const currentProgress = useAppStore.getState().researchProgress;
-                
-                // Phase 1: Thinking phase (0-25%) - slow time-based progress
-                // AI is reasoning before sending any output
-                if (!contentStarted && currentProgress < 25) {
-                    // Logarithmic progress curve - fast at start, slows down
-                    // This gives the illusion of progress while waiting
-                    const targetProgress = Math.min(25, 5 + Math.log10(newTime + 1) * 10);
-                    if (targetProgress > currentProgress) {
-                        const messages = [
-                            'AI is planning research strategy...',
-                            'Analyzing requirements...',
-                            'Preparing search queries...',
-                            'Starting research...'
-                        ];
-                        const messageIndex = Math.min(Math.floor(newTime / 10), messages.length - 1);
-                        setResearchProgress(Math.floor(targetProgress), messages[messageIndex]);
-                    }
-                }
-                // Phase 2: Slow background progress during content streaming (max 85%)
-                // This prevents feeling stuck if content is slow
-                else if (contentStarted && currentProgress < 85) {
-                    // Very slow increment every 5 seconds to show life
-                    if (newTime % 5 === 0 && currentProgress < 80) {
-                        setResearchProgress(currentProgress + 1, useAppStore.getState().researchStatus);
-                    }
-                }
-                
-                return newTime;
-            });
+        // Store start time for accurate elapsed calculation
+        timerStartTimeRef.current = Date.now();
+        
+        // Timer for elapsed time display - uses wall clock for accuracy
+        timerRef.current = setInterval(() => {
+            if (isMountedRef.current) {
+                const elapsed = Math.floor((Date.now() - timerStartTimeRef.current) / 1000);
+                setElapsedTime(elapsed);
+            }
         }, 1000);
 
         async function startResearch() {
@@ -322,6 +301,31 @@ export function Researching() {
                     for (const line of lines) {
                         if (line.trim() === '') continue;
 
+                        // Handle progress events (channel 1)
+                        if (line.startsWith('1:')) {
+                            try {
+                                const progressEvent = JSON.parse(line.substring(2));
+                                if (progressEvent.type === 'progress') {
+                                    // Direct progress update from server - this is the source of truth
+                                    const { progress, status, phase, detail } = progressEvent;
+                                    
+                                    // Only update if progressing forward (prevents jitter)
+                                    const currentProgress = useAppStore.getState().researchProgress;
+                                    if (progress >= currentProgress) {
+                                        setResearchProgress(progress, status);
+                                        
+                                        // Add to logs for significant events
+                                        if (detail || phase === 'searching' || phase === 'synthesizing') {
+                                            setLogs(prev => [...prev, `> ${status}`]);
+                                        }
+                                    }
+                                }
+                            } catch (e) {
+                                console.warn('Failed to parse progress event:', line.substring(0, 50));
+                            }
+                            continue;
+                        }
+
                         if (line.startsWith('0:')) {
                             const rawContent = line.substring(2);
                             // Cleanup JSON string
@@ -335,41 +339,10 @@ export function Researching() {
                                 continue;
                             }
 
-                            // Check for System messages
+                            // Check for System messages - just log them, progress comes from channel 1
                             if (content.startsWith && content.startsWith('\n[System:')) {
                                 const message = content.replace(/\n\[System: |\]$/g, '').replace(/\.{3}$/, '');
                                 setLogs(prev => [...prev, `> ${message}`]);
-
-                                // Update progress based on message content
-                                const currentProgress = useAppStore.getState().researchProgress;
-                                let newProgress = currentProgress;
-                                let statusText = '';
-
-                                if (message.includes('Using tool webSearch') || message.includes('web-search')) {
-                                    newProgress = Math.min(currentProgress + 8, 60);
-                                    statusText = 'Searching the web...';
-                                } else if (message.includes('dataSynthesis') || message.includes('data-synthesis')) {
-                                    newProgress = Math.min(currentProgress + 10, 85);
-                                    statusText = 'Synthesizing data...';
-                                } else if (message.includes('completed')) {
-                                    newProgress = Math.min(currentProgress + 5, 90);
-                                    statusText = 'Processing results...';
-                                } else if (message.includes('Step completed')) {
-                                    newProgress = Math.min(currentProgress + 3, 88);
-                                    statusText = 'Analyzing...';
-                                } else {
-                                    // Generic progress update for other system messages
-                                    newProgress = Math.min(currentProgress + 2, 80);
-                                    statusText = message.substring(0, 50);
-                                }
-
-                                // Only update if progressing forward
-                                if (newProgress > currentProgress) {
-                                    setResearchProgress(newProgress, statusText);
-                                } else if (statusText) {
-                                    // Update text even if progress doesn't move
-                                    setResearchProgress(currentProgress, statusText);
-                                }
                             }
                             // Check for Errors
                             else if (content.startsWith && content.startsWith('\n[System Error:')) {
@@ -379,48 +352,15 @@ export function Researching() {
                             else if (typeof content === 'string') {
                                 // Accumulate ALL string content to preserve JSON integrity
                                 finalJson += content;
-                                
-                                // Mark that content has started (exit thinking phase)
-                                if (!contentStarted && finalJson.length > 0) {
-                                    contentStarted = true;
-                                }
-                                
-                                // Smooth incremental progress based on content growth
-                                // Instead of fixed thresholds, we use relative growth
-                                const contentGrowth = finalJson.length - lastContentLength;
-                                lastContentLength = finalJson.length;
-                                
-                                const currentProgress = useAppStore.getState().researchProgress;
-                                
-                                // Only update if we've received meaningful new content (>100 chars)
-                                if (contentGrowth > 100 && currentProgress < 90) {
-                                    // Calculate increment based on content chunk size
-                                    // Larger chunks = bigger progress jumps, but capped
-                                    const increment = Math.min(5, Math.max(1, Math.floor(contentGrowth / 500)));
-                                    const newProgress = Math.min(90, currentProgress + increment);
-                                    
-                                    // Progress messages based on current progress range
-                                    let statusText = 'Processing...';
-                                    if (newProgress < 40) {
-                                        statusText = 'AI is analyzing...';
-                                    } else if (newProgress < 60) {
-                                        statusText = 'Gathering insights...';
-                                    } else if (newProgress < 80) {
-                                        statusText = 'Compiling research...';
-                                    } else {
-                                        statusText = 'Finalizing report...';
-                                    }
-                                    
-                                    if (newProgress > currentProgress) {
-                                        setResearchProgress(newProgress, statusText);
-                                    }
-                                }
                             }
                         }
                     }
                 }
 
-                clearInterval(timer);
+                if (timerRef.current) {
+                    clearInterval(timerRef.current);
+                    timerRef.current = null;
+                }
                 setResearchProgress(100, 'Research complete!');
 
                 // Parse the final JSON
@@ -565,7 +505,10 @@ export function Researching() {
                     return;
                 }
                 console.error('[CLIENT ERROR]', error);
-                clearInterval(timer);
+                if (timerRef.current) {
+                    clearInterval(timerRef.current);
+                    timerRef.current = null;
+                }
                 
                 // Determine error message
                 let userMessage = 'Research failed. ';
@@ -602,7 +545,11 @@ export function Researching() {
             if (!requestCompleted && !userClickedCancelRef.current && abortControllerRef.current) {
                 console.log('[CLIENT] React cleanup (not user cancel) - keeping request alive');
             }
-            clearInterval(timer);
+            // Always clean up timer on unmount
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+                timerRef.current = null;
+            }
         };
     }, [formSchema?.id, researchAttemptId]); // Re-run when form ID or attempt ID changes
 
